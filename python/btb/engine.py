@@ -4,9 +4,22 @@ BEAT THE BOX RULES ENGINE
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/engine.py
 Status: ACTIVE
-Version: 1.0
+Version: 1.1
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 135 passed)
+Last Tested: 2026-10-20 (pytest: 218 passed)
+
+VERSION 1.1 CHANGES (2026-10-20):
+- New odds_by_rank(hist, total): the odds for every box rank against one
+  pile in a single pass, as plain tuples. The simulator strategy uses it
+  instead of rebuilding sums for each box, which is much faster.
+- The odds formula now lives only in odds_by_rank; odds_from_histogram
+  reads its entry from that table, so the joker and denominator rules are
+  still written exactly once.
+- Game.boxes_left counts with list.count instead of building a list (it
+  runs several times a turn in the simulator).
+- New count_lean(count): which call a running count favours (RULES.md,
+  "Card Counting"), so the windows don't interpret counts themselves.
+- No rule changes.
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. Replaces the game logic that was duplicated across
@@ -37,7 +50,9 @@ KEY FUNCTIONS:
 - call_wins(call, drawn, target), is_exact_match(drawn, target)
 - odds_against(target, pile) -> Odds (higher, lower, higher_equal,
   lower_equal, exact) as fractions 0.0 to 1.0
+- odds_by_rank(hist, total) -> fast odds tuples for every rank (simulator)
 - count_values(card) -> the card's value under each counting method
+- count_lean(count) -> LOWER, HIGHER or None: the call a count favours
 - Game.new(jokers, inclusive_calls, seed) -> shuffled deal
 - Game.from_cards(box, pile, inclusive_calls) -> hand-built state (tests)
 - Game.from_box(box, jokers, inclusive_calls) -> known box, unknown pile
@@ -249,6 +264,19 @@ def count_values(card: Card) -> List[int]:
     return [table[card.rank] for table in COUNT_TABLES]
 
 
+def count_lean(count: int) -> Optional[str]:
+    """The call a running count favours (RULES.md, "Card Counting").
+
+    Positive: high cards have been seen, so more low cards remain -> LOWER.
+    Negative: more high cards remain -> HIGHER. Zero: no lean (None).
+    """
+    if count > 0:
+        return LOWER
+    if count < 0:
+        return HIGHER
+    return None
+
+
 # --------------------------------------------------------------------------- #
 # Comparing cards and odds
 # --------------------------------------------------------------------------- #
@@ -313,22 +341,45 @@ def rank_histogram(pile: Sequence[Card]) -> List[int]:
     return hist
 
 
+CERTAIN_VALUES = (1.0, 1.0, 1.0, 1.0, 1.0)
+
+
+def odds_by_rank(hist: Sequence[int], total: int) -> List[Optional[tuple]]:
+    """Odds for every possible box card against one pile, in a single pass.
+
+    This is the one place the odds formula lives (RULES.md): a joker in the
+    pile wins every call and is an exact match, and the denominator is the
+    size of the draw pile.
+
+    Index = the box card's rank (0 = a joker in the box, which is certain).
+    Each entry is a plain tuple (higher, lower, higher_equal, lower_equal,
+    exact), the same order as the Odds fields. Index 1 is unused (None).
+    Returns all None for an empty pile. Plain tuples keep the simulator
+    fast; odds_from_histogram wraps one entry in an Odds object.
+    """
+    table: List[Optional[tuple]] = [None] * 15
+    if total <= 0:
+        return table
+    table[JOKER_RANK] = CERTAIN_VALUES
+    jokers = hist[JOKER_RANK]
+    cards = sum(hist[2:15])
+    below = 0
+    for rank in RANKS:
+        equal = hist[rank]
+        lower = below + jokers
+        higher = cards - below - equal + jokers
+        table[rank] = (higher / total, lower / total, (higher + equal) / total,
+                       (lower + equal) / total, (equal + jokers) / total)
+        below += equal
+    return table
+
+
 def odds_from_histogram(target: Card, hist: Sequence[int], total: int) -> Optional[Odds]:
     if total <= 0:
         return None
     if target.is_joker:
         return CERTAIN
-    jokers = hist[JOKER_RANK]
-    lower = sum(hist[2:target.rank])
-    equal = hist[target.rank]
-    higher = sum(hist[target.rank + 1:15])
-    return Odds(
-        higher=(higher + jokers) / total,
-        lower=(lower + jokers) / total,
-        higher_equal=(higher + equal + jokers) / total,
-        lower_equal=(lower + equal + jokers) / total,
-        exact=(equal + jokers) / total,
-    )
+    return Odds(*odds_by_rank(hist, total)[target.rank])
 
 
 def odds_against(target: Card, pile: Sequence[Card]) -> Optional[Odds]:
@@ -440,7 +491,7 @@ class Game:
 
     @property
     def boxes_left(self) -> int:
-        return len(self.live_positions)
+        return len(self.box) - self.box.count(None)
 
     @property
     def cards_left(self) -> int:
@@ -471,10 +522,12 @@ class Game:
         return odds_against(card, self.draw_pile)
 
     def odds_all(self) -> List[Optional[Odds]]:
-        hist = rank_histogram(self.draw_pile)
-        total = len(self.draw_pile)
-        return [None if card is None else odds_from_histogram(card, hist, total)
-                for card in self.box]
+        table = odds_by_rank(rank_histogram(self.draw_pile), len(self.draw_pile))
+        out: List[Optional[Odds]] = []
+        for card in self.box:
+            entry = None if card is None else table[card.rank]
+            out.append(None if entry is None else Odds(*entry))
+        return out
 
     def remaining_by_rank(self) -> Dict[int, int]:
         """Cards left in the pile by rank (0 = jokers), only ranks present."""

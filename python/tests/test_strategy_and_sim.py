@@ -4,9 +4,14 @@ STRATEGY AND SIMULATION TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_strategy_and_sim.py
 Status: ACTIVE
-Version: 1.0
+Version: 1.1
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 135 passed)
+Last Tested: 2026-10-20 (pytest: 218 passed)
+
+VERSION 1.1 CHANGES (2026-10-20):
+- New tests for the joker fix (play a box joker once no inclusive calls
+  are left) and the new default threshold.
+- Sweep progress test also covers the confirm phase.
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. Tests for btb.strategy and btb.sim.
@@ -72,6 +77,23 @@ def test_policy_plays_the_joker_when_it_is_the_last_live_box():
         fail(g, pos)
     move = ThresholdPolicy().choose_move(g)
     assert move.position == 8
+
+
+def test_policy_plays_a_box_joker_once_no_inclusive_calls_are_left():
+    # Holding it can't earn a recovery any more; it only froze a box.
+    g = game(["A", "🃏", "2"], ["2", "3", "K"], inclusive=0)
+    move = ThresholdPolicy(threshold=0).choose_move(g)
+    assert move.position == 1 and move.probability == 1.0
+
+
+def test_policy_still_holds_a_box_joker_while_calls_remain():
+    g = game(["A", "🃏", "2"], ["2", "3", "K"], inclusive=1)
+    assert ThresholdPolicy(threshold=100).choose_move(g).position != 1
+
+
+def test_default_threshold_is_ten():
+    from btb.strategy import DEFAULT_THRESHOLD
+    assert ThresholdPolicy().threshold == DEFAULT_THRESHOLD == 10.0
 
 
 def test_policy_decision_does_not_depend_on_scan_order():
@@ -166,6 +188,19 @@ def test_sweep_progress_counts_only_legal_combinations_and_reaches_100():
     sweep = run_sweep(20, grid, seed=3, progress=lambda d, t: calls.append((d, t)))
     assert len(sweep.results) == len(grid) == 6
     assert calls[-1] == (20 * 6, 20 * 6)
+
+
+def test_sweep_progress_includes_the_confirm_phase_and_reaches_100():
+    from btb.sim import CONFIRM_FACTOR, sweep_games
+    grid = sweep_grid((0, 0), (0, 2), [0.0, 10.0])
+    calls = []
+    sweep = run_sweep(10, grid, seed=3, confirm=True,
+                      progress=lambda d, t: calls.append((d, t)))
+    total = sweep_games(10, len(grid), True)
+    assert total == 10 * 6 + 6 * 10 * CONFIRM_FACTOR
+    assert calls[-1] == (total, total)
+    assert len(sweep.confirmed) == 6
+    assert all(r.games == 10 * CONFIRM_FACTOR for r in sweep.confirmed.values())
 
 
 def test_sweep_reports_a_best_even_when_every_win_rate_is_zero():

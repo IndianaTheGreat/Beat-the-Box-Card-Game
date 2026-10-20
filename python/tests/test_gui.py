@@ -4,9 +4,15 @@ GUI SMOKE TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_gui.py
 Status: ACTIVE
-Version: 1.0
+Version: 1.1
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 135 passed)
+Last Tested: 2026-10-20 (pytest: 218 passed)
+
+VERSION 1.1 CHANGES (2026-10-20):
+- Checks the new widgets instead of button text and colours: box_views
+  (drawn cards) with describe() and state, the banner, the tiles, the
+  Assistant's card grid and the Simulator/Optimizer tables.
+- GUI simulator runs use one core (cores_var "1") to stay quick.
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. Smoke tests for the four tool windows and the launcher.
@@ -67,18 +73,19 @@ def test_keyboard_selects_with_numpad_layout_and_calls(tk_root, window, no_dialo
 
 
 def test_recovery_is_chosen_on_the_board(tk_root, window, no_dialogs):
-    from btb.gui_game import COLORS, PlayerGUI
+    from btb.gui_game import PlayerGUI
     gui = PlayerGUI(window)
     gui.game = game(["7", "K"], ["5", "7", "9"], inclusive=1)
     gui.refresh()
     gui.box_clicked(1)
     gui.make_call(HIGHER)              # K fails on a 5
-    assert gui.box_buttons[1].cget("text") == "Failed"
+    assert gui.box_views[1].describe() == "Failed"
     gui.box_clicked(0)
     gui.make_call(LOWER_EQUAL)         # 7 on 7: recovery earned
     assert gui.game.recovery_pending
-    assert gui.box_buttons[1].cget("text") == "Failed\nK♥"  # show-failed is on
-    assert gui.box_buttons[1].cget("bg") == COLORS["recoverable"]
+    assert gui.box_views[1].describe() == "Failed\nK♥"  # show-failed is on
+    assert gui.box_views[1].state == "recoverable"
+    assert gui.banner_kind == "recover"
     assert gui.call_buttons[HIGHER].instate(["disabled"])
     gui.box_clicked(1)
     assert gui.game.box[1].rank == 13 and not gui.game.recovery_pending
@@ -93,7 +100,7 @@ def test_skip_recovery_button(tk_root, window, no_dialogs):
     gui.make_call(HIGHER)
     gui.box_clicked(0)
     gui.make_call(LOWER_EQUAL)
-    assert gui.box_buttons[1].cget("text") == "Failed"  # show-failed is off
+    assert gui.box_views[1].describe() == "Failed"  # show-failed is off
     gui.skip_button.invoke()
     assert not gui.game.recovery_pending and 1 in gui.game.failed
 
@@ -115,9 +122,9 @@ def test_new_game_with_real_deck(tk_root, window, no_dialogs):
     from btb.gui_game import GameSettings, PlayerGUI
     gui = PlayerGUI(window)
     assert gui.new_game(GameSettings(jokers=2, inclusive_calls=7))
-    assert gui.cards_remaining_var.get() == "Cards remaining: 45"
-    assert gui.inclusive_var.get() == "Inclusive calls: 7"
-    for name in ("show_rules", "show_strategy", "show_keyboard_help"):
+    assert gui.cards_remaining_var.get() == "45"
+    assert gui.inclusive_var.get() == "7"
+    for name in ("show_rules", "show_strategy", "show_keyboard_help", "show_about"):
         getattr(gui, name)()
 
 
@@ -127,19 +134,18 @@ def test_assistant_card_picker(tk_root, window, no_dialogs, monkeypatch):
     picked = {}
 
     def fake_wait(dialog_window):
-        # Click A♠ then both jokers, then seven more cards.
+        # Click both jokers, then seven more cards.
         picker = picked["picker"]
-        buttons = [w for w in picker.dialog.winfo_children()
-                   if isinstance(w, gui_game.ttk.Button) and w.cget("text") != "Cancel"]
-        jokers = [b for b in buttons if b.cget("text") == "🃏"]
+        buttons = picker.grid.buttons
+        jokers = [b for c, b in buttons if c.is_joker]
         assert len(jokers) == 2
         jokers[0].invoke()
-        assert jokers[0].instate(["disabled"]) and not jokers[1].instate(["disabled"])
+        assert jokers[0].cget("state") == "disabled" and jokers[1].cget("state") == "normal"
         jokers[1].invoke()
-        for b in buttons:
+        for c, b in sorted(buttons, key=lambda cb: cb[0].rank):
             if picker.result is not None:  # the ninth pick closed the dialog
                 break
-            if b.cget("text") in ("2♠", "3♠", "4♠", "5♠", "6♠", "7♠", "8♠"):
+            if c.label() in ("2♠", "3♠", "4♠", "5♠", "6♠", "7♠", "8♠"):
                 b.invoke()
 
     real_picker = gui_game.CardPickerDialog
@@ -153,14 +159,19 @@ def test_assistant_card_picker(tk_root, window, no_dialogs, monkeypatch):
     assert gui.new_game(gui_game.GameSettings(jokers=2, inclusive_calls=3))
     assert [str(c) for c in gui.game.box] == ["🃏", "🃏", "2♠", "3♠", "4♠", "5♠",
                                               "6♠", "7♠", "8♠"]
-    assert "🃏" not in gui.drawn_combo["values"] and gui.game.cards_left == 45
+    assert "🃏" not in gui.flip_choices() and gui.game.cards_left == 45
     gui.box_clicked(5)
     gui.make_call(HIGHER)              # no card picked yet
     assert "Pick the card you flipped" in gui.status_var.get()
     gui.drawn_var.set("A♥")
     gui.make_call(HIGHER)
     assert gui.game.box[5] == Card.parse("A♥") and gui.drawn_var.get() == ""
-    assert "A♥" not in gui.drawn_combo["values"]
+    assert "A♥" not in gui.flip_choices()
+    a_hearts = next(b for c, b in gui.flip_grid.buttons if c.label() == "A♥")
+    assert a_hearts.cget("state") == "disabled"   # greyed out once used
+    k_hearts = next(b for c, b in gui.flip_grid.buttons if c.label() == "K♥")
+    k_hearts.invoke()                              # clicking a card picks it
+    assert gui.drawn_var.get() == "K♥"
 
 
 def test_simulator_runs_in_background_and_reaches_100(tk_root, window, no_dialogs):
@@ -168,11 +179,13 @@ def test_simulator_runs_in_background_and_reaches_100(tk_root, window, no_dialog
     gui = SimulatorGUI(window)
     gui.sims_var.set("300")
     gui.seed_var.set("4")
+    gui.cores_var.set("1")
     gui.start()
     assert gui.stop_button.instate(["!disabled"]) and gui.run_button.instate(["disabled"])
     pump(tk_root, until=lambda: not gui.task.running and gui.result is not None)
     assert gui.progress_var.get() == 100 and gui.result.games == 300
-    assert "Wins:" in gui.results_text.get("1.0", "end")
+    rows = [gui.details_tree.item(i, "values")[0] for i in gui.details_tree.get_children()]
+    assert "Wins" in rows and gui.win_var.get().endswith(f"±{gui.result.margin_points:.1f}")
     assert gui.run_button.instate(["!disabled"])
     gui.show_advanced_stats()
 
@@ -181,6 +194,7 @@ def test_simulator_stop_button(tk_root, window, no_dialogs):
     from btb.gui_sim import SimulatorGUI
     gui = SimulatorGUI(window)
     gui.sims_var.set("200000")
+    gui.cores_var.set("1")
     gui.start()
     pump(tk_root, until=lambda: gui.progress_var.get() > 0)
     gui.stop_button.invoke()
@@ -207,11 +221,16 @@ def test_optimizer_runs_in_background_and_reaches_100(tk_root, window, no_dialog
     for name, value in (("games", "20"), ("jokers_max", "1"), ("moves_max", "2"),
                         ("threshold_max", "5"), ("step", "5"), ("seed", "1")):
         gui.vars[name].set(value)
+    gui.cores_var.set("1")
     gui.start()
     pump(tk_root, until=lambda: gui.sweep is not None)
     assert gui.progress_var.get() == 100
     assert len(gui.sweep.results) == 2 * 3 * 2
-    assert "Top 10" in gui.results_text.get("1.0", "end")
+    assert len(gui.sweep.confirmed) == 10          # "Confirm top 10" is on by default
+    assert len(gui.table.get_children()) == 10     # the table shows the confirmed ten
+    gui.table_view.set("sweep")
+    gui.fill_table()
+    assert len(gui.table.get_children()) == 12
     gui.show_advanced_stats()
 
 
@@ -288,6 +307,7 @@ def test_closing_a_window_mid_run_stops_the_worker(tk_root, no_dialogs):
     from btb.gui_sim import SimulatorGUI
     gui = SimulatorGUI(tk.Toplevel(tk_root))
     gui.sims_var.set("200000")
+    gui.cores_var.set("1")
     gui.start()
     pump(tk_root, until=lambda: gui.progress_var.get() > 0)
     task = gui.task

@@ -4,9 +4,15 @@ V1 BUG REGRESSION TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_bugs.py
 Status: ACTIVE
-Version: 1.0
+Version: 1.1
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 135 passed)
+Last Tested: 2026-10-20 (pytest: 218 passed)
+
+VERSION 1.1 CHANGES (2026-10-20):
+- GUI checks use the new widgets (box_views, flip_choices) and the tile
+  values ("45" instead of "Cards remaining: 45").
+- New: the lean reading follows all three counts and says when they
+  disagree (found in review: it only looked at the Advanced count).
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. One test per bug found in the original v1 suite.
@@ -91,17 +97,17 @@ def test_bug_aid_labels_refresh_after_each_play(tk_root, no_dialogs):
     gui = AssistantGUI(tk.Toplevel(tk_root))
     gui.new_game(GameSettings(jokers=2, inclusive_calls=3),
                  box=cards("5", "6", "7", "8", "9", "10", "J", "Q", "K"))
-    assert gui.cards_remaining_var.get() == "Cards remaining: 45"
-    assert gui.drawn_combo["values"].count("🃏") == 1  # two jokers, one entry
+    assert gui.cards_remaining_var.get() == "45"
+    assert gui.flip_choices().count("🃏") == 1  # two jokers, one entry
     gui.drawn_var.set("🃏")
     gui.box_clicked(3)
     gui.make_call(HIGHER_EQUAL)
-    assert gui.cards_remaining_var.get() == "Cards remaining: 44"
-    assert gui.inclusive_var.get() == "Inclusive calls: 2"
-    assert "🃏" in gui.drawn_combo["values"]  # the second joker is still there
-    assert gui.box_buttons[3].cget("text") == "🃏"
+    assert gui.cards_remaining_var.get() == "44"
+    assert gui.inclusive_var.get() == "2"
+    assert "🃏" in gui.flip_choices()  # the second joker is still there
+    assert gui.box_views[3].describe() == "🃏"
     gui.undo()
-    assert gui.inclusive_var.get() == "Inclusive calls: 3"
+    assert gui.inclusive_var.get() == "3"
 
 
 # ================================================================ Player ==== #
@@ -182,7 +188,7 @@ def test_bug_player_keys_and_undo_before_a_game_do_not_crash(tk_root, no_dialogs
 def test_bug_player_single_click_handler_selects_then_calls(tk_root, no_dialogs):
     # Old: two card_button_click definitions (the second silently won) plus
     # dead select_card/init_styles. Now one handler selects, a call plays.
-    from btb.gui_game import COLORS, PlayerGUI
+    from btb.gui_game import PlayerGUI
     import tkinter as tk
     gui = PlayerGUI(tk.Toplevel(tk_root))
     assert not hasattr(gui, "card_button_click")
@@ -191,7 +197,7 @@ def test_bug_player_single_click_handler_selects_then_calls(tk_root, no_dialogs)
     gui.refresh()
     assert gui.call_buttons[HIGHER].instate(["disabled"])
     gui.box_clicked(0)
-    assert gui.selected == 0 and gui.box_buttons[0].cget("bg") == COLORS["selected"]
+    assert gui.selected == 0 and gui.box_views[0].state == "selected"
     assert not gui.call_buttons[HIGHER].instate(["disabled"])
     gui.make_call(HIGHER)
     assert gui.game.box[0] == card("J♠")
@@ -215,6 +221,29 @@ def test_bug_count_sign_matches_what_remains():
     low = sum(1 for c in g.draw_pile if 2 <= c.rank <= 7)
     high = sum(1 for c in g.draw_pile if c.rank >= 9)
     assert low > high
+
+
+def test_count_lean_follows_rules_md():
+    from btb.engine import count_lean
+    assert count_lean(3) == LOWER       # high cards seen -> more low cards left
+    assert count_lean(-2) == HIGHER
+    assert count_lean(0) is None
+
+
+def test_bug_lean_message_reads_all_three_counts(tk_root, no_dialogs):
+    # A, 7 and 6 make the Basic count -1 (lean Higher) but the Advanced count
+    # +1 (lean Lower). The old message only read the Advanced count.
+    from btb.gui_game import PlayerGUI
+    import tkinter as tk
+    gui = PlayerGUI(tk.Toplevel(tk_root))
+    g = Game.from_cards(cards("A", "7", "6", "8", "8", "8", "8", "8", "8"), cards("2", "3"))
+    assert g.counts == [-1, 0, 1]    # Basic, Weighted, Advanced
+    gui.game = g
+    gui.refresh()
+    assert [v.get() for v in gui.count_vars] == ["-1 ▲", "0", "+1 ▼"]
+    assert gui.lean_var.get() == "The counts disagree: no clear lean"
+    assert PlayerGUI.lean_message([LOWER, None, LOWER]).endswith("lean Lower ▼")
+    assert PlayerGUI.lean_message([None, None, None]) == "Even count: no lean"
 
 
 def test_bug_remaining_cards_shortcut_does_not_clash_with_copy():

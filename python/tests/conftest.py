@@ -4,9 +4,14 @@ PYTEST FIXTURES
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/conftest.py
 Status: ACTIVE
-Version: 1.0
+Version: 1.1
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 135 passed)
+Last Tested: 2026-10-20 (pytest: 218 passed)
+
+VERSION 1.1 CHANGES (2026-10-20):
+- New autouse fixture isolated_settings: every test gets its own empty
+  settings folder (BTB_SETTINGS_DIR) and a fresh theme state, so tests
+  never read or change your real settings.
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. Shared fixtures for the test suite.
@@ -19,6 +24,7 @@ KEY FUNCTIONS:
 -------------
 - tk_root -> hidden Tk root; skips the test when Tk or a display is missing
 - no_dialogs -> records message boxes instead of blocking on them
+- isolated_settings (automatic) -> a private settings folder per test
 - pump(root, until) -> runs the Tk event loop until a condition is true
 
 DEPENDENCIES:
@@ -35,8 +41,22 @@ xvfb-run pytest
 """
 
 import os
+import sys
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def isolated_settings(tmp_path, monkeypatch):
+    """Point btb.settings at a fresh folder and forget the active theme."""
+    monkeypatch.setenv("BTB_SETTINGS_DIR", str(tmp_path / "settings"))
+    theme = sys.modules.get("btb.theme")
+    if theme is not None:
+        theme.reset()
+    yield tmp_path / "settings"
+    theme = sys.modules.get("btb.theme")
+    if theme is not None:
+        theme.reset()
 
 
 @pytest.fixture

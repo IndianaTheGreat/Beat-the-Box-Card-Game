@@ -8,7 +8,7 @@
 ![Tkinter](https://img.shields.io/badge/GUI-Tkinter-2E7D32)
 ![Status](https://img.shields.io/badge/status-in%20development-orange)
 
-[Rules](RULES.md) · [Getting Started](#-getting-started) · [The Suite](#-the-suite) · [Roadmap](#%EF%B8%8F-roadmap)
+[Rules](RULES.md) · [Strategy](STRATEGY.md) · [Tool Guide](docs/GUIDE.md) · [Getting Started](#-getting-started) · [The Suite](#-the-suite) · [Roadmap](#%EF%B8%8F-roadmap)
 
 </div>
 
@@ -35,7 +35,9 @@ You also get a few **inclusive calls** (higher-*or-equal*, lower-*or-equal*). Hi
 └─────┴─────┴─────┘
 ```
 
-📖 **Full rules, with examples:** [RULES.md](RULES.md)
+📖 **Full rules, with examples:** [RULES.md](RULES.md)<br>
+🧠 **How to play well, with simulated win rates:** [STRATEGY.md](STRATEGY.md)<br>
+🧰 **What each tool does and how it works:** [docs/GUIDE.md](docs/GUIDE.md)
 
 ---
 
@@ -45,12 +47,12 @@ This repo is more than the game. It's a set of tools for understanding it.
 
 | Tool | What it does |
 |---|---|
-| 🎮 **Game Player** | Play the full game with shuffled decks, live odds for every box, three card-counting methods, undo, and keyboard shortcuts. |
-| 🧭 **Game Assistant** | Mirror a game you're playing with a real deck. Enter the cards as they come and get the odds and counts as you go. |
-| 📊 **Simulator** | Let a strategy play thousands of games automatically and report win rate, boxes left, inclusive calls used, and more. |
-| 🔬 **Strategy Optimizer** | Sweep joker counts, inclusive-call budgets, and decision thresholds to find the settings and strategy that win most often. |
+| 🎮 **Game Player** | Play the full game with shuffled decks. A big banner shows each call and its result; odds under each card (on or off), three card counts with a plain "lean" reading, a play history, undo, and keyboard shortcuts. |
+| 🧭 **Game Assistant** | Mirror a game you're playing with a real deck. Click the cards as they come and get exact odds and counts as you go. |
+| 📊 **Simulator** | Let the strategy play thousands of games and report the win rate with its margin of error, boxes left, inclusive calls used, and more. Export to CSV or JSON. |
+| 🔬 **Strategy Optimizer** | Sweep joker counts, inclusive-call budgets, and thresholds on the same deals, see which results are statistically tied, confirm the top ten, and export the table. |
 
-All four open from one launcher (`main.py`).
+All four open from one launcher (`main.py`), in your choice of eight colour themes. Big runs use several CPU cores, checking first what is free. [docs/GUIDE.md](docs/GUIDE.md) explains every window in detail.
 
 ---
 
@@ -74,7 +76,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-The tests in `python/tests/` are the executable spec: one per rule in [RULES.md](RULES.md), plus one per bug fixed from v1. GUI tests skip when no display is available; on headless Linux, run `xvfb-run pytest`.
+The tests in `python/tests/` are the executable spec: one per rule in [RULES.md](RULES.md), one per bug fixed from v1, plus checks that the fast simulator matches the original, that parallel runs match single-process runs, that every theme is readable, and that the docs agree with the engine. GUI tests skip when no display is available; on headless Linux, run `xvfb-run pytest`. The tests never touch your real settings.
 
 <details>
 <summary><b>Linux: Tkinter not found?</b></summary>
@@ -97,6 +99,7 @@ sudo dnf install python3-tkinter # Fedora
 | `D` / `A` | Higher or Equal / Lower or Equal |
 | `Ctrl+Z` | Undo |
 | `Ctrl+N` | New game |
+| `Ctrl+O` | Show or hide odds on the cards |
 | `Ctrl+P` | Show probabilities |
 | `Ctrl+L` | Show remaining cards (list) |
 | `Ctrl+R` / `Ctrl+Y` / `Ctrl+H` | Rules / Strategy / Shortcut help |
@@ -106,16 +109,24 @@ sudo dnf install python3-tkinter # Fedora
 ## 📁 Project Structure
 
 ```
-beat-the-box/
+Beat-the-Box-Card-Game/
 ├── README.md            ← you are here
 ├── RULES.md             ← the official rules (single source of truth)
-└── python/              ← v1: the Python / Tkinter suite
-    ├── main.py              launcher
+├── STRATEGY.md          ← how to play well, with simulated win rates
+├── docs/
+│   └── GUIDE.md         ← what each tool does and how it works
+└── python/              ← the Python / Tkinter suite
+    ├── main.py              launcher and Settings window
     ├── btb/
     │   ├── engine.py        the rules engine: no GUI, used by every tool
     │   ├── strategy.py      the simulator's playing policy
-    │   ├── sim.py           batch simulations and parameter sweeps
-    │   ├── text.py          in-app rules, strategy guide, shortcuts
+    │   ├── sim.py           batches, sweeps, margins of error, parallel runs
+    │   ├── system.py        CPU / memory scan that sizes parallel runs
+    │   ├── export.py        CSV and JSON exports
+    │   ├── text.py          in-app rules, strategy guide, tool help, shortcuts
+    │   ├── settings.py      remembered settings (theme, odds, CPU cores)
+    │   ├── theme.py         the eight colour themes, fonts, styling
+    │   ├── widgets.py       drawn cards, stat tiles, charts, card picker
     │   ├── gui_game.py      🎮 Game Player + 🧭 Game Assistant
     │   └── gui_sim.py       📊 Simulator + 🔬 Strategy Optimizer
     ├── tests/               pytest suite (the spec for the TypeScript port)
@@ -134,6 +145,7 @@ Every tool plays through `btb/engine.py`, so the rules live in exactly one place
 - [x] **Bug fixes.** Joker handling, the recovery logic, undo, and the probability math, so all four tools agree with [RULES.md](RULES.md).
 - [x] **A responsive optimizer.** Run it in the background, add a Stop button, and show live progress.
 - [x] **Tests** covering every rule in [RULES.md](RULES.md).
+- [x] **Modern look and docs.** Drawn cards, a result banner, eight themes, a faster and more accurate simulator with exports, and the [strategy](STRATEGY.md) and [tool](docs/GUIDE.md) guides.
 - [ ] **TypeScript engine.** A port of the rules engine, checked against the same tests as the Python version.
 - [ ] **Chrome extension.** Play in the browser side panel, with no install beyond the extension itself.
 - [ ] **Web version** on GitHub Pages: play from a link.
@@ -142,10 +154,13 @@ Every tool plays through `btb/engine.py`, so the rules live in exactly one place
 
 ## 🧠 Strategy Tips
 
-- **Middle cards are the danger zone.** A `2` or an `A` is close to a sure thing, while a `7` or `8` is a coin flip. Spend inclusive calls on the middle.
-- **A joker in the box is a free recovery.** Play an inclusive call on it once you have a failed box to bring back. Until then, keep it.
+- **Middle cards are the danger zone.** A `2` or an `A` is close to a sure thing, while a `7`, `8` or `9` is a coin flip.
+- **Save inclusive calls.** Early on they add only about 6 points (the chance of a tie). Spend them when a tie is likely.
+- **A joker in the box is a free recovery.** Play an inclusive call on it once you have a failed box to bring back. With no inclusive calls left, play it right away.
 - **Watch the count.** A strongly positive count means low cards are due, and a negative count means high cards are.
 - **Choose recoveries carefully.** Bring back the failed box with the most extreme card, since it gives the easiest next call.
+
+More, with the numbers behind it: [STRATEGY.md](STRATEGY.md).
 
 ---
 
