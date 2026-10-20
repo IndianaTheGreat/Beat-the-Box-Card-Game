@@ -7,14 +7,14 @@
 </div>
 
 > [!NOTE]
-> The rules are in [RULES.md](../RULES.md) and playing advice is in [STRATEGY.md](../STRATEGY.md). This guide covers the Python suite (version 1.2.0) in `python/`.
+> The rules are in [RULES.md](../RULES.md), playing advice is in [STRATEGY.md](../STRATEGY.md), and the card counts are explained in [CARD_COUNTING.md](CARD_COUNTING.md). This guide covers the Python suite (version 1.2.0) in `python/`.
 
 ---
 
 ## 📋 Contents
 
 1. [How the Suite Fits Together](#-how-the-suite-fits-together)
-2. [Starting Up and Settings](#-starting-up-and-settings)
+2. [The Window, Pages and Settings](#-the-window-pages-and-settings)
 3. [Game Player](#-game-player)
 4. [Game Assistant](#-game-assistant)
 5. [Simulator](#-simulator)
@@ -34,22 +34,27 @@
                  btb/engine.py  (the rules, in code: cards, odds, counts, play, undo)
                 ┌───────┴──────────────────────┐
         btb/strategy.py                  btb/gui_game.py
-     (how the computer plays)        Game Player + Game Assistant
-                │
-          btb/sim.py  (many games, sweeps, margins of error, parallel runs)
-         ┌──────┴───────┐
-  btb/gui_sim.py    btb/export.py
-  Simulator +       CSV / JSON
-  Optimizer
+     (how the computer plays)        Game Player + Game Assistant pages
+                │                              │
+          btb/sim.py  (many games, sweeps,     │
+           margins of error, parallel runs)    │
+         ┌──────┴───────┐                      │
+  btb/gui_sim.py    btb/export.py              │
+  Simulator +       CSV / JSON                 │
+  Optimizer pages                              │
+         └──────────────┬──────────────────────┘
+                   btb/app.py  (one window: sidebar + pages)
+                        │
+                     main.py  (starts it)
 ```
 
-- **The engine is the only place the rules live.** The windows, the strategy and the simulator all call it; none of them has a rule of its own. The TypeScript version (Phase 2) will be checked against the same tests.
+- **The engine is the only place the rules live.** The pages, the strategy and the simulator all call it; none of them has a rule of its own. The TypeScript version (Phase 2) will be checked against the same tests.
 - **Supporting modules:** `theme.py` (colours and fonts), `settings.py` (what is remembered), `widgets.py` (the drawn cards, tiles and charts), `system.py` (how many CPU cores a run may use), `text.py` (help text and shortcuts).
 - **Everything is standard-library Python.** Nothing to install except Python itself.
 
 ---
 
-## 🚀 Starting Up and Settings
+## 🪟 The Window, Pages and Settings
 
 From the `python/` folder:
 
@@ -57,15 +62,30 @@ From the `python/` folder:
 python main.py
 ```
 
-The launcher shows one tile per tool. Each tool opens in its own window, so you can, for example, play in the Game Player while a long Optimizer run works in the background.
+Everything happens in **one window**. The **sidebar** on the left switches pages:
 
-**Settings** (button on the launcher):
+| Section | Pages |
+|---|---|
+| — | **Home**: one tile per tool |
+| PLAY | **Game Player**, **Game Assistant** |
+| ANALYZE | **Simulator**, **Optimizer** |
+| HELP | **How to Play**, **Strategy**, **Tool Guide** (what each tool does), **Shortcuts** |
+| — | **Settings** (at the bottom) |
+
+- **Pages keep their place.** A page is built the first time you open it and stays as it was when you switch away: a game in progress is still there when you come back, and a long Optimizer run keeps going while you play.
+- **Nothing pops up.** New Game settings, the Assistant's card picker, the odds table, Advanced Statistics, error messages and the end-of-game message all appear on the page itself. The only exception is the system **Save** dialog when you export results.
+- **Resize freely.** The window opens sized to your screen. Make it bigger or smaller and the cards, tables and charts follow (smallest size 960 × 620). In a small window, a side panel that is too tall gets a scrollbar, a table that is too wide gets one along the bottom, and the toolbar drops its shortcut hints. Nothing is cut off.
+- **Keyboard shortcuts** act only on the page that is showing, and never while you are typing in a box.
+
+**Settings** (bottom of the sidebar):
 
 | Setting | What it does |
 |---|---|
-| **Theme** | Eight colour themes, numbered 1–8, each with a small preview. The choice applies to every open window at once. You can also switch from **View → Theme** in any tool. |
-| **Show odds under the cards by default** | Whether new Player and Assistant windows start with the odds showing. Ctrl+O still switches them on or off in the window you are in, without changing this default. |
+| **Theme** | Eight colour themes, numbered 1–8, each with a small preview. Applies to the whole window when you press Save. |
+| **Show odds & counts by default** | Whether the Player and Assistant pages start with the odds, card count and plays showing (for pages not opened yet in this session). Ctrl+O still switches them on a page without changing this default. |
 | **CPU cores** | How many processes the Simulator and Optimizer may use. **Auto** (recommended) checks what is free each time; **Scan Now** shows what Auto would pick right now. |
+
+**Save** applies and remembers only what you changed on the page. **Cancel** (or Escape) drops your unsaved choices and goes back to the page you came from; the page always shows what is saved when you open it.
 
 Settings are **remembered** in a small file in your user folder:
 
@@ -83,41 +103,51 @@ Delete that file to go back to the defaults.
 
 **What it's for:** playing Beat the Box with a shuffled deck, with as much (or as little) help as you want.
 
-### The window
+### The page
 
 | Area | What it shows |
 |---|---|
-| **Toolbar** | New Game, Undo, and the Show odds switch. |
-| **Banner** (top, large) | Your last call and its result, for example `Higher on 7♠ → drew J♥ ✓ Correct!`. Green = correct, red = the box failed, gold = you earned a recovery. The line under it gives hints and tells you what to do next. |
-| **The box** (3 × 3 cards) | Live cards face up; failed boxes as a card back. The selected box has a blue outline. The small number under each card is its key (7 8 9 / 4 5 6 / 1 2 3, like a numpad). With odds on, ▲ and ▼ show the chance of Higher and Lower. |
-| **Tiles** | Cards left in the draw pile, inclusive calls left, boxes still alive. |
-| **Card count** | The three running counts, each with ▼ (favours Lower) or ▲ (favours Higher), and a one-line reading: "More LOW cards left: lean Lower", or "The counts disagree" when they point different ways. See [STRATEGY.md](../STRATEGY.md#-reading-the-count). |
-| **Plays** | Every play so far: the call, the card, ✓ or ✗, and any recovery. |
-| **Call buttons** | Higher (W), Lower (S), Higher or Equal (D), Lower or Equal (A). The inclusive calls are the highlighted pair; they are greyed out when none are left. |
+| **Toolbar** | New Game, Undo, and the **Show odds & counts** switch (Ctrl+O). In a narrow window the labels drop their shortcut hints. |
+| **Banner** (top, large) | Your last call and its result, for example `Higher on 7♠ → drew J♥ ✓ Correct!`. Green = correct, red = the box failed, gold = you earned a recovery (with a **Skip Recovery** button). The line under it gives hints and tells you what to do next. The end of the game is announced here too. |
+| **The box** (3 × 3 cards) | Live cards face up; failed boxes as a card back. The selected box has a blue outline. The small number under each card is its key (7 8 9 / 4 5 6 / 1 2 3, like a numpad). With odds & counts on, ▲ and ▼ show the chance of Higher and Lower. |
+| **Tiles** | Cards left in the draw pile, inclusive calls left, boxes still alive. Always shown. |
+| **Odds & counts** (side panel, Ctrl+O) | Three views: **Count & plays** (the three running counts, each with ▼ or ▲ for the call it favours, a one-line reading, and every play so far), **Odds table** (every call's chance for every box in button order, the tie chance, and the **best plain call**), and **Cards left** (how many of each rank remain). When switched off, the panel says so. The side panel takes whatever width the cards don't need, and scrolls if the window is too short for it. |
+| **Call buttons** (across the page) | ▲ Higher (W), ▲= Higher or Equal (D), ▼ Lower (S), ▼= Lower or Equal (A). The two ▲ buttons share one colour and the two ▼ buttons another. Their text shrinks to fit a narrow window. |
+
+### Calls that are greyed out
+
+The game only offers calls that make sense on the selected card:
+
+| Card | Not offered | Why |
+|---|---|---|
+| `2` | ▼ Lower | Nothing is lower than a 2. It could only win on a joker, and Higher wins on that joker too. |
+| `A` | ▲ Higher | Nothing is higher than an A (same reasoning). |
+| Joker, with inclusive calls left | ▲ Higher, ▼ Lower | An inclusive call on a joker is just as certain **and** earns a recovery. Once you're out of inclusive calls, Higher and Lower come back so the joker can still be played. |
+| Any card, no inclusive calls left | ▲=, ▼= | None left to spend. |
+
+This is a guard rail on screen, not a rule: [RULES.md](../RULES.md) still allows every call, and the Simulator's results are unaffected. Pressing the key for a greyed-out call explains why in the hint line (and only suggests an inclusive call if you have one left).
 
 ### A turn, step by step
 
-1. **New Game** (Ctrl+N): choose 0–2 jokers, the number of inclusive calls, and whether failed cards are shown when recovering.
+1. **New Game** (Ctrl+N): the settings appear beside the board. Choose 0–2 jokers, the number of inclusive calls, and whether failed cards are shown when recovering, then **Start Game**.
 2. **Select a box**: click it, or press its number key.
-3. **Make your call**: click a call button or press W / S / D / A.
+3. **Make your call**: click a call button or press W / D / S / A.
 4. The banner shows what was drawn and whether you were right. A correct card replaces the box card; a wrong one fails the box.
 5. **Recovery:** if an inclusive call hits an exact match (or involves a joker) and a box has failed, the banner turns gold and failed boxes glow gold. Click one to bring it back with the card it failed on, or press **Skip Recovery** in the banner.
-6. The game ends when the pile runs out (you win) or all nine boxes fail.
+6. The game ends when the pile runs out (you win) or all nine boxes fail; the banner says which.
 
 **Undo** (Ctrl+Z) takes back the last play, including any recovery made with it and any inclusive call it spent. You can undo all the way to the start.
 
-### Menus and side windows
+### Help from the page
 
-- **Game:** New Game, Undo, Close Window.
-- **View:** Show Odds on Cards (Ctrl+O), **Probabilities** (Ctrl+P: every call's odds for every box, plus the recovery chance), **Remaining Cards** (Ctrl+L: how many of each rank are left), Theme.
-- **Help:** How to Play (Ctrl+R), Strategy Guide (Ctrl+Y), Keyboard Shortcuts (Ctrl+H), About This Tool.
-
-The side windows update after every play.
+- **Ctrl+P** shows the odds table and **Ctrl+L** the cards left, in the side panel (switching odds & counts on if needed).
+- **Ctrl+R**, **Ctrl+Y** and **Ctrl+H** open the How to Play, Strategy and Shortcuts pages.
 
 ### How it works inside
 
 - **New Game** shuffles with a seeded Mulberry32 generator (the same one the TypeScript version will use) and deals through `Game.new`.
 - **Each call** is one `Game.play(position, call)`. The engine flips the top card, decides success with `call_wins`, checks for an exact match, updates the counts, and reports whether a recovery was earned, is waiting, or was lost (nothing to recover).
+- **Greyed-out calls** come from the engine's `offered_calls`, and the reason shown for one from `call_blocked_reason`, so the TypeScript version will offer exactly the same buttons and reasons.
 - **Odds** come from `Game.odds_all`, which counts the ranks left in the pile. The denominator is the number of cards in the pile; a joker in the pile counts as a win for every call.
 - **Undo** restores a full snapshot of the game taken before each play, so nothing can drift out of step.
 
@@ -129,16 +159,16 @@ The side windows update after every play.
 
 ### Setting up
 
-1. **New Game** (Ctrl+N): choose jokers and inclusive calls, as in the Player.
-2. A grid of all 52 cards (plus one button per joker) opens. **Click the nine cards in your box, from the top-left to the bottom-right.** They appear on the board as you go. Undo Pick takes back the last one.
+1. **New Game** (Ctrl+N): choose jokers and inclusive calls beside the board, as in the Player, then Start Game.
+2. A grid of all 52 cards (plus one button per joker) appears beside the board. **Click the nine cards in your box, from the top-left to the bottom-right.** They appear on the board as you go. **Undo Pick** takes back the last one; **Cancel** puts the previous game back. The mini cards shrink to fit a narrow window.
 
 ### Each turn
 
 1. Flip a card from your real deck.
-2. **Click that card in the "Card you flipped" grid.** Cards that are no longer in the pile are greyed out, so you can't pick one twice. "Flipped:" confirms your choice.
+2. **Click that card in the "Card you flipped" grid.** Cards that are no longer in the pile are greyed out, so you can't pick one twice. "Flipped:", beside the Joker button, confirms your choice.
 3. Select the box and make your call, exactly as in the Player.
 
-Everything else (the banner, odds, counts, play history, recoveries, undo, menus and shortcuts) works the same as in the Game Player.
+Everything else (the banner, odds & counts, greyed-out calls, recoveries, undo and shortcuts) works the same as in the Game Player.
 
 ### How it works inside
 
@@ -161,9 +191,13 @@ Everything else (the banner, odds, counts, play history, recoveries, undo, menus
 | **Inclusive calls** | 0 up to 43 + jokers. |
 | **Threshold (% points)** | The strategy spends an inclusive call only when it adds at least this many points of win chance over the best plain call. Default 10. See [STRATEGY.md](../STRATEGY.md#%EF%B8%8F-inclusive-calls). |
 | **Seed** | Leave blank for a random one (it is shown in the results). The same seed always deals the same games, so a run can be repeated exactly. |
-| **CPU cores** | Auto (recommended) or a fixed number. Remembered between runs. |
+| **CPU cores** | Auto (recommended) or a fixed number. Remembered between runs, and shared with the Optimizer and Settings: a change in one shows up in the others. |
+
+Invalid settings show a red message under the progress bar and nothing starts. A run of more than 2,000,000 games asks for a **second press of Run** before it starts.
 
 ### Results
+
+**Overview** tab:
 
 | Part | What it shows |
 |---|---|
@@ -171,10 +205,12 @@ Everything else (the banner, odds, counts, play history, recoveries, undo, menus
 | **Games played, average boxes left in wins, average plays per game** | Quick totals. |
 | **Chart** | In winning games, how often 1, 2, … 9 boxes were left at the end. |
 | **Details table** | Wins and losses, the range, inclusive calls used, recoveries, jokers drawn, cards left in losses, fewest and most plays, the settings and the seed. |
-| **Advanced Statistics** | Everything above as text, plus every distribution in full. |
-| **Export CSV… / Export JSON…** | Save the results (see below). |
 
-The progress line shows games per second while running, and the time taken and number of processes when done. **Stop** keeps the games finished so far and labels them as partial.
+**Advanced** tab: everything above as text, plus every distribution in full (boxes left, cards left, plays, inclusive calls used, recoveries and jokers drawn per game).
+
+**Export CSV… / Export JSON…** (under the settings) save the results (see below). The progress line shows games per second while running, and the time taken and number of processes when done. **Stop** keeps the games finished so far and labels them as partial. **Clear** empties the results.
+
+In a narrow window the four tiles go two by two and the details table gets a sideways scrollbar.
 
 ### Exports
 
@@ -205,7 +241,7 @@ The progress line shows games per second while running, and the time taken and n
 - **Auto CPU cores** measures how idle the CPU is (over a fifth of a second) and how much memory is free, then uses at most 75% of your cores, always leaves one free, only counts cores that are idle right now, and allows about 150 MB per helper. Helpers run at **low priority**, so anything you are doing comes first.
 - If helper processes can't start (or stop working), the run finishes in the main process instead of failing.
 
-**The window never freezes:** the run happens on a background thread that reports progress through a queue; the window checks the queue 20 times a second.
+**The window never freezes:** the run happens on a background thread that reports progress through a queue; the page checks the queue 20 times a second.
 
 **Margin of error:** the range is a *Wilson score interval* at 95%. It is accurate even near 0% and 100%. Ten times more games makes it about three times narrower:
 
@@ -232,9 +268,11 @@ The progress line shows games per second while running, and the time taken and n
 | **Confirm top 10** | After the sweep, re-run the ten best with 5× more games on **fresh** deals (on by default). |
 | **CPU cores** | As in the Simulator. |
 
-A sweep is limited to 5,000 configurations, and very large runs ask before starting.
+A sweep is limited to 5,000 configurations, and runs of more than 2,000,000 games need a second press of Run.
 
 ### Results
+
+**Results** tab:
 
 | Part | What it shows |
 |---|---|
@@ -242,9 +280,10 @@ A sweep is limited to 5,000 configurations, and very large runs ask before start
 | **Table** | One row per configuration: rank, win %, ±, jokers, calls, threshold, average boxes left in wins, games. **Click a heading to sort** (click again to reverse). |
 | **Highlighted rows** | Statistically **tied for best**: their 95% ranges overlap the winner's, so the data can't tell them apart. |
 | **All configurations / Confirmed top 10** | Switch between the sweep and the confirmation run. When there is a confirmation, the winner shown in the tiles is the confirmed winner. |
-| **Use Best in Simulator** | Opens a Simulator with the winning jokers, calls, threshold and seed filled in, ready for a bigger run. |
-| **Advanced Statistics** | The best overall, the best for each joker count, inclusive-call count and threshold, and the top five for each. |
-| **Export CSV… / JSON…** | One row per configuration. |
+
+**Advanced** tab: the best overall, the best for each joker count, inclusive-call count and threshold, and the top five for each.
+
+**Use Best in Simulator** (under the settings) switches to the Simulator page with the winning jokers, calls, threshold and seed filled in, ready for a bigger run. If the Simulator is in the middle of a run, it asks you to stop that first instead. **Export CSV… / JSON…** save one row per configuration.
 
 ### Exports
 
@@ -265,19 +304,19 @@ The CSV has one row per configuration with these columns:
 
 ## ⌨️ Keyboard Shortcuts
 
-In the Game Player and Game Assistant:
+On the Game Player and Game Assistant pages:
 
 | Keys | Action |
 |---|---|
 | `7 8 9` / `4 5 6` / `1 2 3` | Select a box (numpad layout; the numpad works too) |
-| `W` / `S` | Higher / Lower |
-| `D` / `A` | Higher or Equal / Lower or Equal |
+| `W` / `D` | Higher / Higher or Equal |
+| `S` / `A` | Lower / Lower or Equal |
 | `Ctrl+Z` | Undo |
 | `Ctrl+N` | New game |
-| `Ctrl+O` | Show or hide odds on the cards |
-| `Ctrl+P` | Probabilities window |
-| `Ctrl+L` | Remaining cards window |
-| `Ctrl+R` / `Ctrl+Y` / `Ctrl+H` | How to play / Strategy guide / Keyboard help |
+| `Ctrl+O` | Show or hide odds, card count and plays |
+| `Ctrl+P` | Odds table beside the board |
+| `Ctrl+L` | Cards left beside the board |
+| `Ctrl+R` / `Ctrl+Y` / `Ctrl+H` | How to Play / Strategy / Shortcuts pages |
 
 Letter shortcuts work with Caps Lock on. `Ctrl+C` is left free for copying.
 
@@ -298,7 +337,7 @@ Letter shortcuts work with Caps Lock on. `Ctrl+C` is left free for copying.
 
 **Change the default** in `python/btb/theme.py`: set `DEFAULT_THEME` to a name or a number (for example `DEFAULT_THEME = 5`). A theme chosen in Settings overrides the default until the settings file is deleted.
 
-**Add a theme:** copy one `Theme(...)` block in `THEMES`, give it a new name and change the colours. It appears in Settings and View → Theme automatically. The tests check every theme for readable contrast, so `pytest` will tell you if a colour pair is too faint.
+**Add a theme:** copy one `Theme(...)` block in `THEMES`, give it a new name and change the colours (including `up` and `down`, the colours of the Higher and Lower call buttons). It appears in Settings automatically. The tests check every theme for readable contrast, so `pytest` will tell you if a colour pair is too faint.
 
 ---
 
@@ -313,9 +352,10 @@ The tests in `python/tests/` are the executable spec, and they will be the spec 
 | `test_strategy_and_sim.py` | Strategy choices, seeded batches, progress, Stop, sweeps |
 | `test_speed_and_accuracy.py` | The fast strategy matches the original move for move; parallel equals single-process; margins, ties, confirmation, fallback |
 | `test_export_and_system.py` | CSV and JSON exports, the CPU/memory limits, the settings file |
-| `test_theme_and_look.py` | Every theme's contrast; live theme switching; banner, odds toggle, cards, exports and tables in the windows |
-| `test_gui.py` | Keyboard, recovery on the board, side windows, Simulator and Optimizer runs, background-thread safety |
-| `test_docs.py` | RULES.md, STRATEGY.md and the in-app guide agree with the engine and with each other; every link to a heading works |
+| `test_theme_and_look.py` | Every theme's contrast; live theme switching; banner, odds switch, cards, exports and tables |
+| `test_pages_and_controls.py` | Greyed-out calls and their reasons, button order and colours, the sidebar pages (kept state, keys only on the page showing, nothing pops up), the New Game panel, in-page messages, the Settings page, resizing, and that every page fits and settles at 960 × 620 and 1306 × 678 |
+| `test_gui.py` | Keyboard, recovery on the board, the odds table, the card picker, Simulator and Optimizer runs, background-thread safety |
+| `test_docs.py` | RULES.md, STRATEGY.md, CARD_COUNTING.md and the in-app guide agree with the engine and with each other; every link to a heading works |
 
 ```bash
 cd python
@@ -324,7 +364,7 @@ pytest                 # Windows / macOS
 xvfb-run pytest        # headless Linux, to include the window tests
 ```
 
-Tests never touch your real settings file.
+Run `pytest` from the `python` folder: that is where its settings file (`pytest.ini`) is. Tests never touch your real settings file.
 
 ---
 
@@ -333,7 +373,8 @@ Tests never touch your real settings file.
 | Problem | Fix |
 |---|---|
 | `No module named tkinter` (Linux) | `sudo apt install python3-tk` (Debian/Ubuntu) or `sudo dnf install python3-tkinter` (Fedora). |
-| The window is cut off on a small screen | The Game Assistant is the tallest window (about 720 px) and the Optimizer the widest (about 1,300 px). Maximise the window; on a very small screen, lower the display scaling in your system settings. |
+| `No module named 'btb'` when running tests | Run `pytest` from the `python` folder, not the repo root. |
+| The window is cut off on a small screen | The window's smallest size is 960 × 620; below the size a page needs, side panels and tables get scrollbars. On a screen smaller than that, lower the display scaling in your system settings. |
 | A run is slow | Check CPU cores is **Auto** (or set a number), and use fewer games per test in the Optimizer. The progress line shows games per second. |
 | The computer feels busy during a run | Set CPU cores to a lower number; helpers already run at low priority. |
-| Settings look wrong | Delete the settings file (see [Starting Up and Settings](#-starting-up-and-settings)). |
+| Settings look wrong | Delete the settings file (see [The Window, Pages and Settings](#-the-window-pages-and-settings)). |

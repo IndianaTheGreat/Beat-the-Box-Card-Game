@@ -4,9 +4,21 @@ IN-APP TEXT AND SHORTCUTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/text.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Last Tested: 2026-10-20 (pytest: 254 passed)
+
+VERSION 1.2 CHANGES (2026-10-20):
+- Text for the one-window app: HOW_IT_WORKS and IMPORTANT_POINTS moved
+  here from main.py; tool_guide() builds the Tool Guide page.
+- TOOL_HELP rewritten for pages instead of menus and pop-up windows.
+- Ctrl+O now shows or hides the odds, the card count and the plays;
+  Ctrl+P / Ctrl+L show the odds table / cards left beside the board;
+  Ctrl+R / Ctrl+Y / Ctrl+H open the How to Play / Strategy / Shortcuts
+  pages.
+- Shortcuts are listed in the same order as the call buttons (W, D, S, A).
+- Strategy guide: the "Using the odds" section matches the new controls
+  and points to docs/CARD_COUNTING.md.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - New shortcut: Ctrl+O shows or hides the odds under each card.
@@ -36,11 +48,12 @@ KEY FUNCTIONS:
 -------------
 - SHORTCUTS -> (keys shown, description, action, Tk event sequences)
 - POSITION_KEYS -> number keys to box positions, numpad layout
-- shortcut_help() -> text for the Keyboard Help window
-- RULES_SUMMARY, STRATEGY_GUIDE -> text for the help windows
+- shortcut_help() -> text for the Shortcuts page
+- RULES_SUMMARY, STRATEGY_GUIDE -> text for the How to Play and Strategy pages
 - STRATEGY_SECTIONS -> section names shared with STRATEGY.md
-- TOOL_HELP -> "About This Tool" text, keyed player / assistant /
+- TOOL_HELP -> what each tool does, keyed player / assistant /
   simulator / optimizer
+- HOW_IT_WORKS, IMPORTANT_POINTS, tool_guide() -> the Tool Guide page
 
 NOTES:
 -----
@@ -53,18 +66,20 @@ NOTES:
 SHORTCUTS = [
     ("7 8 9 / 4 5 6 / 1 2 3", "Select a box (numpad layout)", "select", []),
     ("W", "Higher", "higher", ["<KeyPress-w>", "<KeyPress-W>"]),
-    ("S", "Lower", "lower", ["<KeyPress-s>", "<KeyPress-S>"]),
     ("D", "Higher or Equal", "higher_equal", ["<KeyPress-d>", "<KeyPress-D>"]),
+    ("S", "Lower", "lower", ["<KeyPress-s>", "<KeyPress-S>"]),
     ("A", "Lower or Equal", "lower_equal", ["<KeyPress-a>", "<KeyPress-A>"]),
     ("Ctrl+Z", "Undo", "undo", ["<Control-z>", "<Control-Z>"]),
     ("Ctrl+N", "New game", "new_game", ["<Control-n>", "<Control-N>"]),
-    ("Ctrl+O", "Show or hide odds on the cards", "toggle_odds", ["<Control-o>", "<Control-O>"]),
-    ("Ctrl+P", "Show probabilities", "show_probabilities", ["<Control-p>", "<Control-P>"]),
-    ("Ctrl+L", "Show remaining cards (list)", "show_remaining_cards",
+    ("Ctrl+O", "Show or hide odds, card count and plays", "toggle_odds",
+     ["<Control-o>", "<Control-O>"]),
+    ("Ctrl+P", "Odds table beside the board", "show_probabilities",
+     ["<Control-p>", "<Control-P>"]),
+    ("Ctrl+L", "Cards left beside the board", "show_remaining_cards",
      ["<Control-l>", "<Control-L>"]),
-    ("Ctrl+R", "How to play", "show_rules", ["<Control-r>", "<Control-R>"]),
-    ("Ctrl+Y", "Strategy guide", "show_strategy", ["<Control-y>", "<Control-Y>"]),
-    ("Ctrl+H", "Keyboard help", "show_keyboard_help", ["<Control-h>", "<Control-H>"]),
+    ("Ctrl+R", "How to Play page", "show_rules", ["<Control-r>", "<Control-R>"]),
+    ("Ctrl+Y", "Strategy page", "show_strategy", ["<Control-y>", "<Control-Y>"]),
+    ("Ctrl+H", "Shortcuts page", "show_keyboard_help", ["<Control-h>", "<Control-H>"]),
 ]
 
 # Number keys laid out like a numpad: 7 8 9 is the top row of the box.
@@ -167,9 +182,13 @@ RECOVERIES
   * Recoveries can't be saved: one earned with nothing failed is lost.
 
 USING THE ODDS
-  * Ctrl+O shows the odds under each card; Ctrl+P shows the full table.
+  * Ctrl+O shows the odds under each card, the card count and your plays;
+    Ctrl+P shows the full odds table beside the board.
   * Pick the box whose best plain call has the highest odds. The count is
-    a quick way to guess the same thing when the odds are hidden."""
+    a quick way to guess the same thing when the odds are hidden.
+  * The count gets you most of the way without the odds. To use inclusive
+    calls well, also keep track of how many cards of each rank in your box
+    are left. docs/CARD_COUNTING.md shows what each habit is worth."""
 
 
 TOOL_HELP = {
@@ -177,19 +196,26 @@ TOOL_HELP = {
 
 Play Beat the Box with a shuffled deck.
 
-  1. Game > New Game (Ctrl+N): choose jokers, inclusive calls and whether
-     failed cards are shown when you recover.
+  1. New Game (Ctrl+N): choose jokers, inclusive calls and whether failed
+     cards are shown when you recover, beside the board, then Start Game.
   2. Click a box (or press its number key: 7 8 9 / 4 5 6 / 1 2 3).
-  3. Make your call: Higher (W), Lower (S), Higher or Equal (D),
+  3. Make your call: Higher (W), Higher or Equal (D), Lower (S),
      Lower or Equal (A). The banner at the top shows your call, the card
      drawn and the result.
   4. On an exact match with an inclusive call, failed boxes glow gold:
-     click one to bring it back, or Skip Recovery.
+     click one to bring it back, or Skip Recovery in the banner.
 
-The side panel shows the draw pile, inclusive calls left and boxes alive,
-the three card counts with what they suggest, and every play so far.
-View > Show Odds on Cards (Ctrl+O) puts the odds for Higher and Lower under
-each card. Undo (Ctrl+Z) takes back any play, including its recovery.
+Buttons that make no sense are greyed out: Lower on a 2, Higher on an A,
+and the plain calls on a joker while you still have inclusive calls (an
+inclusive call on a joker is just as certain and can also recover a
+failed box).
+The rules still allow them; the game just doesn't offer them.
+
+Show odds & counts (Ctrl+O) adds the odds under each card, the three card
+counts with what they suggest, and every play so far. Ctrl+P shows the
+full odds table and Ctrl+L the cards left, in the same place. The tiles
+(draw pile, inclusive calls, boxes alive) always show. Undo (Ctrl+Z)
+takes back any play, including its recovery.
 
 More detail: docs/GUIDE.md in the project folder.""",
 
@@ -197,15 +223,16 @@ More detail: docs/GUIDE.md in the project folder.""",
 
 Use this while you play with a real deck of cards.
 
-  1. Game > New Game (Ctrl+N), then click the nine cards you dealt, in
-     order from the top-left box to the bottom-right box.
+  1. New Game (Ctrl+N), choose the settings, then click the nine cards you
+     dealt, in order from the top-left box to the bottom-right box. They
+     appear on the board as you go.
   2. Each turn, flip your real card, then click that card in the
      "Card you flipped" grid. Cards already used are greyed out.
   3. Select the box and make your call, exactly as in the Game Player.
 
 Everything else works like the Game Player: the banner, the odds, the card
-counts, recoveries and undo. The odds come from the cards you haven't
-seen yet, so they are exactly right for your real game.
+counts, recoveries, greyed-out calls and undo. The odds come from the
+cards you haven't seen yet, so they are exactly right for your real game.
 
 More detail: docs/GUIDE.md in the project folder.""",
 
@@ -217,17 +244,18 @@ reports how it did.
 The strategy plays the plain call with the best odds, and spends an
 inclusive call only when it adds at least the THRESHOLD in points of win
 chance. It plays an inclusive call on a joker in the box once a box has
-failed, and recovers the failed box with the most extreme card.
+failed, plays the joker right away once no inclusive calls are left, and
+recovers the failed box with the most extreme card.
 
 Settings: number of games, jokers, inclusive calls, threshold and a seed.
 The same seed always deals the same games, so runs can be repeated.
 
-Results:
+Results (Overview tab):
   * Win rate, with its 95% range ("25.6% ±0.9" means the true rate is
     almost certainly between 24.7% and 26.5%). More games = narrower.
   * Boxes left in winning games (chart), averages and the details table.
-  * Advanced Statistics: every distribution in full.
-  * Export CSV / JSON: save the results to open in Excel or keep.
+The Advanced tab lists every distribution in full. Export CSV / JSON saves
+the results to open in Excel or keep.
 
 Speed: CPU cores "Auto" spreads big runs over several processes, using
 only what is free and always leaving a core for you.
@@ -245,7 +273,9 @@ ranges you give, plays the same deals with each, and ranks them.
     ranges overlap, so the data can't tell them apart.
   * Confirm top 10: re-runs the best ten with 5x more games on fresh
     deals. This catches a configuration that only looked best by luck.
-  * Use Best in Simulator: opens the Simulator with the winning settings.
+  * Use Best in Simulator: opens the Simulator page with the winning
+    settings filled in.
+  * Advanced tab: the best for each joker count, call count and threshold.
   * Export CSV / JSON: one row per configuration.
 
 Big sweeps are spread over several processes (CPU cores: Auto), and Stop
@@ -253,3 +283,63 @@ keeps every configuration that finished.
 
 More detail: docs/GUIDE.md in the project folder.""",
 }
+
+
+HOW_IT_WORKS = """Beat the Box: How the Suite Works
+
+Everything happens in this one window. The sidebar on the left switches
+pages; each page keeps its place when you switch away, so a long Optimizer
+run keeps going while you play.
+
+Every tool plays by the same rules engine (btb/engine.py), which follows
+RULES.md exactly. Nothing about the rules is duplicated between tools.
+docs/GUIDE.md explains each tool in full; STRATEGY.md explains how to play
+well; docs/CARD_COUNTING.md explains the counts.
+
+The window can be resized down to 960 x 620: the cards, tables and charts
+follow it, and a panel that doesn't fit gets a scrollbar."""
+
+
+IMPORTANT_POINTS = """Important Points
+
+Rules worth remembering
+  - A same-rank card on a plain Higher or Lower is a loss.
+  - Inclusive calls are spent when made, win or lose.
+  - Exact match on an inclusive call = one recovery. A joker (drawn or in
+    the box) is an exact match for anything.
+  - Recoveries can't be banked: with no failed box, the recovery is lost.
+  - A recovered box comes back with the card it failed on.
+
+Settings limits
+  - Jokers: 0-2
+  - Inclusive calls: 0 to 43 + jokers
+  - Threshold: 0-100 percentage points (the gain an inclusive call must
+    offer over the best plain call before the strategy spends one)
+
+Reading the counts
+  - Positive count: high cards already seen, so more LOW cards remain.
+  - Negative count: more HIGH cards remain.
+
+Reading simulator results
+  - "25.6% ±0.9" means the true win rate is almost certainly between 24.7%
+    and 26.5%. Ten times more games makes the range about three times
+    narrower.
+  - In the Optimizer, highlighted rows are statistically tied with the
+    best. Use more games or Confirm top 10 to separate them.
+
+Big runs
+  - CPU cores "Auto" checks free CPU and memory at the start of each run,
+    uses at most three quarters of your cores, always leaves one free,
+    and runs its helpers at low priority.
+  - Use Stop if a run is taking too long; finished results are kept.
+  - Use a seed to make a run repeatable."""
+
+
+def tool_guide() -> str:
+    """The Tool Guide page: how the suite works, each tool, then key points."""
+    parts = [HOW_IT_WORKS]
+    for key in ("player", "assistant", "simulator", "optimizer"):
+        parts.append(TOOL_HELP[key])
+    parts.append(IMPORTANT_POINTS)
+    rule = "\n\n" + "-" * 66 + "\n\n"
+    return rule.join(parts)

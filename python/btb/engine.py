@@ -4,9 +4,21 @@ BEAT THE BOX RULES ENGINE
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/engine.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Last Tested: 2026-10-20 (pytest: 254 passed)
+
+VERSION 1.2 CHANGES (2026-10-20):
+- New offered_calls(card, inclusive_left): the calls the game windows
+  offer on a box card. Plain Lower on a 2 and plain Higher on an A are left
+  out (they never do better than the opposite call); on a joker only the
+  inclusive calls are offered while any are left. This is a screen guard
+  rail, not a rule: play() still accepts every call RULES.md allows, and
+  the simulator strategy is unchanged.
+- New call_blocked_reason(card, call, inclusive_left): why a call is not
+  offered, as a short code (NO_INCLUSIVE_LEFT, JOKER_USE_INCLUSIVE,
+  NOTHING_LOWER, NOTHING_HIGHER). offered_calls is built from it, so the
+  greyed-out buttons and the message explaining them can't disagree.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - New odds_by_rank(hist, total): the odds for every box rank against one
@@ -53,6 +65,8 @@ KEY FUNCTIONS:
 - odds_by_rank(hist, total) -> fast odds tuples for every rank (simulator)
 - count_values(card) -> the card's value under each counting method
 - count_lean(count) -> LOWER, HIGHER or None: the call a count favours
+- offered_calls(card, inclusive_left) -> calls the windows offer (guard rail)
+- call_blocked_reason(card, call, inclusive_left) -> why a call isn't offered
 - Game.new(jokers, inclusive_calls, seed) -> shuffled deal
 - Game.from_cards(box, pile, inclusive_calls) -> hand-built state (tests)
 - Game.from_box(box, jokers, inclusive_calls) -> known box, unknown pile
@@ -299,6 +313,52 @@ def call_wins(call: str, drawn: Card, target: Card) -> bool:
     if call == HIGHER_EQUAL:
         return drawn.rank >= target.rank
     return drawn.rank <= target.rank
+
+
+LOWEST_RANK, HIGHEST_RANK = RANKS[0], RANKS[-1]
+
+
+OFFER_ORDER = (HIGHER, HIGHER_EQUAL, LOWER, LOWER_EQUAL)   # button order: Higher pair, Lower pair
+
+# Why a call is not offered (call_blocked_reason). The windows turn these
+# codes into words; the TypeScript port uses the same codes.
+NO_INCLUSIVE_LEFT = "no_inclusive_left"
+JOKER_USE_INCLUSIVE = "joker_use_inclusive"
+NOTHING_LOWER = "nothing_lower"
+NOTHING_HIGHER = "nothing_higher"
+
+
+def call_blocked_reason(card: Card, call: str, inclusive_left: int) -> Optional[str]:
+    """Why the game windows don't offer `call` on this box card, or None if
+    they do. A screen guard rail, not a rule: play() accepts every call
+    RULES.md allows. Left out:
+      * inclusive calls when none are left (NO_INCLUSIVE_LEFT);
+      * plain calls on a joker while inclusive calls are left: an inclusive
+        call is just as certain and can also recover a failed box. With no
+        inclusive calls left, the plain calls come back so the joker can be
+        played (JOKER_USE_INCLUSIVE);
+      * plain Lower on a 2 (NOTHING_LOWER) and plain Higher on an A
+        (NOTHING_HIGHER): they can only win on a joker, and the opposite
+        call wins on that joker too, so they never do better.
+    """
+    if call not in CALLS:
+        raise RulesError(f"unknown call {call!r}")
+    if call in INCLUSIVE_CALLS and inclusive_left <= 0:
+        return NO_INCLUSIVE_LEFT
+    if card.is_joker:
+        return JOKER_USE_INCLUSIVE if call in PLAIN_CALLS and inclusive_left > 0 else None
+    if call == LOWER and card.rank == LOWEST_RANK:
+        return NOTHING_LOWER
+    if call == HIGHER and card.rank == HIGHEST_RANK:
+        return NOTHING_HIGHER
+    return None
+
+
+def offered_calls(card: Card, inclusive_left: int) -> tuple:
+    """The calls the game windows offer on a box card, in button order
+    (the ones call_blocked_reason doesn't rule out)."""
+    return tuple(call for call in OFFER_ORDER
+                 if call_blocked_reason(card, call, inclusive_left) is None)
 
 
 @dataclass(frozen=True)

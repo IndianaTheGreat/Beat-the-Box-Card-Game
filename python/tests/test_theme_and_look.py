@@ -4,9 +4,15 @@ THEME AND NEW-LOOK TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_theme_and_look.py
 Status: ACTIVE
-Version: 1.0
+Version: 1.1
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Last Tested: 2026-10-20 (pytest: 254 passed)
+
+VERSION 1.1 CHANGES (2026-10-20):
+- Updated for the one-window app: the theme is chosen on the Settings
+  page (the game pages no longer have a View menu), "Nothing to export"
+  shows on the page instead of a pop-up, and the banner's wrong-call
+  example uses Higher on a K, since Lower on a 2 is now greyed out.
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. Every theme is complete and readable; themes switch live and are
@@ -114,7 +120,6 @@ def test_switching_theme_restyles_open_windows_and_is_remembered(tk_root, window
     themes.set_theme("Classic Light", tk_root)
     light = themes.get("Classic Light")
     assert gui.theme is light and gui.box_views[0].theme is light
-    assert gui.theme_var.get() == "Classic Light"
     assert str(gui.root.cget("background")) == light.bg
     assert settings.get("theme") == "Classic Light"
     window.destroy()
@@ -133,8 +138,8 @@ def test_banner_shows_the_call_and_the_result(tk_root, window, no_dialogs):
     assert str(gui.banner_label.cget("background")) == gui.theme.good
     gui.box_clicked(1)
     gui.make_call(LOWER)                          # 9 -> 2: correct
-    gui.box_clicked(1)
-    gui.make_call(LOWER)                          # 2 -> 7: wrong
+    gui.box_clicked(0)
+    gui.make_call(HIGHER)                         # K -> 7: wrong
     assert gui.banner_kind == "bad" and "Wrong" in gui.banner_var.get()
     assert gui.history_list.size() == 3 and "✗" in gui.history_list.get("end")
     gui.undo()
@@ -205,7 +210,7 @@ def test_simulator_exports_through_the_save_dialog(tk_root, window, no_dialogs, 
     from btb import gui_sim
     gui = gui_sim.SimulatorGUI(window)
     gui.export("csv")                             # nothing to export yet
-    assert no_dialogs[-1][1] == "Nothing to export"
+    assert gui.message_var.get().startswith("Nothing to export") and no_dialogs == []
     gui.sims_var.set("120")
     gui.seed_var.set("9")
     gui.cores_var.set("1")

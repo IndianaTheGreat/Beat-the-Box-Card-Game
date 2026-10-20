@@ -4,9 +4,18 @@ THEMES AND STYLING
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/theme.py
 Status: ACTIVE
-Version: 1.0
+Version: 1.1
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Last Tested: 2026-10-20 (pytest: 254 passed)
+
+VERSION 1.1 CHANGES (2026-10-20):
+- Each theme has an "up" and a "down" colour: the two Higher buttons share
+  one, the two Lower buttons the other.
+- Styles for the one-window app: the sidebar (Nav, NavActive, NavHeading),
+  in-page tabs (TNotebook) and inline messages (Error = white on the
+  theme's red, Notice).
+- mix(a, b, share) blends two colours (hover shades for the new buttons).
+- Removed the unused Quiet.TLabel style.
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. Eight numbered colour themes, the fonts, and the ttk styling every
@@ -46,6 +55,7 @@ KEY FUNCTIONS:
   forgets closed ones
 - alive(widget) -> True while a widget still exists
 - contrast(a, b) -> WCAG contrast ratio of two colours (used by tests)
+- mix(a, b, share), hover_shade(bg, text) -> colour helpers
 
 NOTES:
 -----
@@ -95,6 +105,10 @@ class Theme:
     accent: str         # main buttons (New Game, Run, inclusive calls)
     accent_hover: str
     accent_text: str
+    up: str             # Higher / Higher or Equal buttons
+    up_text: str
+    down: str           # Lower / Lower or Equal buttons
+    down_text: str
     field: str          # entry and combobox background
     field_text: str
     chart: str          # bars in charts
@@ -111,6 +125,7 @@ THEMES: List[Theme] = [
           good="#1f8a4c", bad="#b42318", banner_text="#ffffff",
           button="#2a7a4b", button_hover="#33915a", button_text="#ffffff",
           accent="#e8c15a", accent_hover="#f2d27c", accent_text="#1b1b1b",
+          up="#e8c15a", up_text="#1b1b1b", down="#8fd0f7", down_text="#0d2433",
           field="#fbf8ef", field_text="#1c1c1c", chart="#e8c15a"),
     Theme("Royal Blue",
           bg="#1d3b7a", panel="#152c5e", edge="#3657a3", text="#eef2ff", muted="#bccaf0",
@@ -120,6 +135,7 @@ THEMES: List[Theme] = [
           good="#15803d", bad="#b91c1c", banner_text="#ffffff",
           button="#3657a3", button_hover="#4468bb", button_text="#ffffff",
           accent="#fbbf24", accent_hover="#fcd34d", accent_text="#1b1b1b",
+          up="#fbbf24", up_text="#1b1b1b", down="#7ee0b8", down_text="#0d2a20",
           field="#fbfbf7", field_text="#111827", chart="#fbbf24"),
     Theme("Casino Red",
           bg="#7a1c1c", panel="#5e1414", edge="#a03636", text="#fff3f0", muted="#efc2bb",
@@ -129,6 +145,7 @@ THEMES: List[Theme] = [
           good="#15803d", bad="#9f1239", banner_text="#ffffff",
           button="#a03636", button_hover="#b84848", button_text="#ffffff",
           accent="#facc15", accent_hover="#fde047", accent_text="#1b1b1b",
+          up="#facc15", up_text="#1b1b1b", down="#9cc8fb", down_text="#0f2340",
           field="#fdf9f1", field_text="#1c1c1c", chart="#facc15"),
     Theme("Classic Light",
           bg="#eef0f3", panel="#ffffff", edge="#cfd4dc", text="#111827", muted="#4b5563",
@@ -138,6 +155,7 @@ THEMES: List[Theme] = [
           good="#15803d", bad="#b91c1c", banner_text="#ffffff",
           button="#e2e6ec", button_hover="#d3d9e2", button_text="#111827",
           accent="#2563eb", accent_hover="#1d4ed8", accent_text="#ffffff",
+          up="#2563eb", up_text="#ffffff", down="#0f766e", down_text="#ffffff",
           field="#ffffff", field_text="#111827", chart="#2563eb"),
     Theme("Midnight",
           bg="#0f172a", panel="#1e293b", edge="#334155", text="#e2e8f0", muted="#94a3b8",
@@ -147,6 +165,7 @@ THEMES: List[Theme] = [
           good="#15803d", bad="#be123c", banner_text="#ffffff",
           button="#334155", button_hover="#475569", button_text="#f1f5f9",
           accent="#38bdf8", accent_hover="#7dd3fc", accent_text="#0f172a",
+          up="#38bdf8", up_text="#0f172a", down="#c4b5fd", down_text="#1e1240",
           field="#0b1220", field_text="#e2e8f0", chart="#38bdf8"),
     Theme("Slate",
           bg="#3a4150", panel="#2b313c", edge="#525b6b", text="#f3f4f6", muted="#c3c8d2",
@@ -156,6 +175,7 @@ THEMES: List[Theme] = [
           good="#15803d", bad="#b91c1c", banner_text="#ffffff",
           button="#525b6b", button_hover="#616b7d", button_text="#ffffff",
           accent="#5eead4", accent_hover="#99f6e4", accent_text="#0f1a1a",
+          up="#5eead4", up_text="#0f1a1a", down="#fbbf24", down_text="#1b1b1b",
           field="#f9fafb", field_text="#111827", chart="#5eead4"),
     Theme("Parchment",
           bg="#eadfc8", panel="#f7f0e1", edge="#cbb994", text="#3a2e1d", muted="#6b5a3e",
@@ -165,6 +185,7 @@ THEMES: List[Theme] = [
           good="#2f6b2f", bad="#a61b1b", banner_text="#ffffff",
           button="#ddd0b3", button_hover="#d2c29f", button_text="#3a2e1d",
           accent="#6b3f1d", accent_hover="#7d4d27", accent_text="#fffdf7",
+          up="#6b3f1d", up_text="#fffdf7", down="#1d4e6b", down_text="#fffdf7",
           field="#fffdf7", field_text="#2a2116", chart="#8f5a2e"),
     Theme("High Contrast",
           bg="#000000", panel="#111111", edge="#ffffff", text="#ffffff", muted="#e0e0e0",
@@ -174,6 +195,7 @@ THEMES: List[Theme] = [
           good="#00a83e", bad="#d10000", banner_text="#ffffff",
           button="#ffffff", button_hover="#ffd600", button_text="#000000",
           accent="#ffd600", accent_hover="#ffe866", accent_text="#000000",
+          up="#ffd600", up_text="#000000", down="#00e5ff", down_text="#000000",
           field="#000000", field_text="#ffffff", chart="#ffd600"),
 ]
 
@@ -281,8 +303,12 @@ def _apply_style(root: tk.Misc, t: Theme) -> None:
     for name, bg, hover, fg, size, weight, pad in (
             ("TButton", t.button, t.button_hover, t.button_text, 10, "normal", (10, 5)),
             ("Accent.TButton", t.accent, t.accent_hover, t.accent_text, 10, "bold", (12, 5)),
-            ("Call.TButton", t.button, t.button_hover, t.button_text, 12, "bold", (12, 9)),
-            ("CallAccent.TButton", t.accent, t.accent_hover, t.accent_text, 12, "bold", (12, 9))):
+            ("CallUp.TButton", t.up, hover_shade(t.up, t.up_text), t.up_text, 12, "bold",
+             (10, 9)),
+            ("CallDown.TButton", t.down, hover_shade(t.down, t.down_text), t.down_text, 12,
+             "bold", (10, 9)),
+            ("Nav.TButton", t.panel, t.button, t.text, 11, "normal", (14, 7)),
+            ("NavActive.TButton", t.accent, t.accent_hover, t.accent_text, 11, "bold", (14, 7))):
         style.configure(name, background=bg, foreground=fg, bordercolor=t.edge,
                         lightcolor=bg, darkcolor=bg, padding=pad,
                         font=font("ui", size, weight), focuscolor=fg, anchor="center")
@@ -291,6 +317,24 @@ def _apply_style(root: tk.Misc, t: Theme) -> None:
                   lightcolor=[("disabled", t.panel), ("active", hover)],
                   darkcolor=[("disabled", t.panel), ("active", hover)],
                   foreground=[("disabled", t.muted)])
+    for name in ("Nav.TButton", "NavActive.TButton"):
+        style.configure(name, anchor="w", bordercolor=t.panel, relief="flat")
+    style.configure("NavHeading.TLabel", background=t.panel, foreground=t.muted,
+                    font=font("ui", 9, "bold"))
+    style.configure("Sidebar.TFrame", background=t.panel)
+    style.configure("SidebarTitle.TLabel", background=t.panel, foreground=t.text,
+                    font=font("ui", 15, "bold"))
+    style.configure("Error.TLabel", background=t.bad, foreground=t.banner_text,
+                    padding=(8, 4), font=font("ui", 10, "bold"))
+    style.configure("Notice.TLabel", background=t.panel, foreground=t.text,
+                    padding=(8, 4), font=font("ui", 10, "bold"))
+    style.configure("TNotebook", background=t.bg, bordercolor=t.edge, tabmargins=(0, 4, 0, 0))
+    style.configure("TNotebook.Tab", background=t.panel, foreground=t.muted,
+                    bordercolor=t.edge, lightcolor=t.panel, padding=(14, 5),
+                    font=font("ui", 10, "bold"))
+    style.map("TNotebook.Tab", background=[("selected", t.button)],
+              foreground=[("selected", t.button_text)],
+              lightcolor=[("selected", t.button)])
 
     for name in ("TEntry", "TCombobox", "TSpinbox"):
         style.configure(name, fieldbackground=t.field, foreground=t.field_text,
@@ -411,6 +455,21 @@ def reset() -> None:
 
 
 # -------------------------------------------------------------- contrast -- #
+
+def mix(a: str, b: str, share: float) -> str:
+    """Blend colour a towards colour b by `share` (0.0 = a, 1.0 = b)."""
+    a, b = a.lstrip("#"), b.lstrip("#")
+    parts = [round(int(a[i:i + 2], 16) * (1 - share) + int(b[i:i + 2], 16) * share)
+             for i in (0, 2, 4)]
+    return "#" + "".join(f"{p:02x}" for p in parts)
+
+
+def hover_shade(background: str, text: str) -> str:
+    """A hover colour that keeps `text` readable: lighter behind dark text,
+    darker behind light text."""
+    light_text = _luminance(text) > 0.5
+    return mix(background, "#000000" if light_text else "#ffffff", 0.15 if light_text else 0.18)
+
 
 def _luminance(color: str) -> float:
     color = color.lstrip("#")

@@ -1,12 +1,43 @@
 """
 ==============================================
-GAME PLAYER AND GAME ASSISTANT WINDOWS
+GAME PLAYER AND GAME ASSISTANT PAGES
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/gui_game.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Last Tested: 2026-10-20 (pytest: 254 passed)
+
+VERSION 1.2 CHANGES (2026-10-20):
+- Pages, not pop-ups: each tool builds inside the frame it is given (a
+  page of the one-window app). New Game settings and the Assistant's
+  nine-card picker open beside the board; the odds table (Ctrl+P) and
+  cards left (Ctrl+L) show in the side panel; How to Play / Strategy /
+  Shortcuts / About open as app pages; the game-over message is the
+  banner. The menu bar is gone (the sidebar and toolbar replace it).
+- Resizable: the board and cards grow and shrink with the window. The
+  cards get the width their height allows and the side panel the rest
+  (within SIDE_WIDTH); the side panel scrolls when the window is too short
+  for it, the view switches wrap, and the toolbar drops its shortcut hints
+  when narrow. The Assistant's flipped-card grid shrinks to fit, with
+  "Flipped:" beside the Joker button to save a row.
+- Call buttons in pairs: ▲ Higher, ▲= Higher or Equal (one colour), then
+  ▼ Lower, ▼= Lower or Equal (another colour), across the whole page; the
+  text shrinks to fit a narrow window.
+- Calls that make no sense are greyed out (engine.offered_calls): plain
+  Lower on a 2, plain Higher on an A, and plain calls on a joker while
+  inclusive calls are left. A shortcut for one says why in the hint line,
+  using the engine's reason (call_blocked_reason), and only suggests an
+  inclusive call when one is left. The joker hint only promises a
+  recovery when a box has failed.
+- The odds table follows the button order and has the "Best" (plain
+  call) column of the old Probabilities window back. Only the side view
+  that is showing is filled in, and the odds are worked out once a turn.
+- "Show odds & counts" (Ctrl+O) now shows or hides the odds under the
+  cards, the card count and the plays together. The tiles always show.
+- Keys only act on the page that is showing, and never while typing in a
+  field (Ctrl shortcuts included). A read-only field, like the cards-left
+  text, doesn't count, so clicking it never switches the shortcuts off.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - New look: cards drawn on a canvas (btb.widgets), colours from the chosen
@@ -46,6 +77,10 @@ calls and draw the resulting state. No rules, odds or counting here.
   Game Assistant - mirror a real-deck game: pick the nine box cards, then
                    pick each card you actually flip
 
+Each tool is a page: it builds itself inside the frame it is given (a page
+of the one-window app in btb/app.py). Given a window of its own instead, it
+works on its own too (the tests use that).
+
 DEPENDENCIES:
 ------------
 - btb.engine, btb.text, btb.theme, btb.settings, btb.widgets
@@ -54,21 +89,23 @@ DEPENDENCIES:
 KEY FUNCTIONS:
 -------------
 - GameSettings -> jokers, inclusive calls, show failed cards
-- GameSetupDialog -> modal settings dialog
-- CardPickerDialog -> pick the nine box cards (Assistant)
-- PlayerGUI.new_game / box_clicked / make_call / undo / skip_recovery
-- PlayerGUI.toggle_odds / show_probabilities / show_remaining_cards
-- AssistantGUI -> same window plus the flipped-card grid (side panel)
+- GameSetupPanel -> the New Game settings, beside the board
+- CardPickerPanel -> pick the nine box cards (Assistant), beside the board
+- PlayerGUI(parent, app).new_game / box_clicked / make_call / undo /
+  skip_recovery / toggle_odds / show_probabilities / show_remaining_cards /
+  update_side_view
+- AssistantGUI -> same page plus the flipped-card grid
 
 ERROR HANDLING:
 --------------
-RulesError from the engine is shown in the hint line; nothing crashes.
-Message boxes are only used for the game-over announcement and invalid
-setup input.
+RulesError from the engine and invalid settings are shown on the page
+(hint line or the settings panel); nothing crashes and nothing pops up.
 
 NOTES:
 -----
-- Plain-letter shortcuts (W, S, D, A, number keys) ignore Ctrl.
+- Keys are bound on the window and only act on the page that is showing,
+  and never while you are typing in a field.
+- Plain-letter shortcuts (W, D, S, A, number keys) ignore Ctrl.
 - box_views[i] is the CardView for box i; its describe() gives the text a
   player would read ("A♥", "Failed", "Failed\\nK♥").
 """
@@ -77,22 +114,27 @@ from __future__ import annotations
 
 import tkinter as tk
 from dataclasses import dataclass
-from tkinter import messagebox, ttk
-from typing import List, Optional
+from tkinter import ttk
+from typing import Callable, List, Optional
 
 from . import settings as app_settings
 from . import text
 from . import theme as themes
 from .engine import (
-    BOX_SIZE, CALL_LABELS, CALLS, COUNT_METHOD_NAMES, HIGHER, HIGHER_EQUAL,
-    INCLUSIVE_CALLS, LOWER, LOWER_EQUAL, MAX_JOKERS, Card, Game, PlayResult,
-    RulesError, count_lean, max_inclusive_calls,
+    BOX_SIZE, CALL_LABELS, COUNT_METHOD_NAMES, HIGHER, HIGHER_EQUAL, JOKER_USE_INCLUSIVE,
+    LOWER, LOWER_EQUAL, MAX_JOKERS, NO_INCLUSIVE_LEFT, NOTHING_HIGHER, NOTHING_LOWER,
+    OFFER_ORDER, Card, Game, PlayResult, RulesError, call_blocked_reason, count_lean,
+    max_inclusive_calls, offered_calls,
 )
 from .theme import Theme, font
-from .widgets import CardGrid, CardView, StatTile, card_name, readable_on
+from .widgets import (
+    CardGrid, CardView, ScrollFrame, StatTile, card_name, flow_row, readable_on,
+    scrolled_tree, text_width, wrap_to,
+)
 
 CONTROL_MASK = 0x0004
 
+CALL_ORDER = OFFER_ORDER          # Higher pair, then Lower pair (engine.OFFER_ORDER)
 CALL_KEYS = {HIGHER: "W", LOWER: "S", HIGHER_EQUAL: "D", LOWER_EQUAL: "A"}
 CALL_ARROWS = {HIGHER: "▲", LOWER: "▼", HIGHER_EQUAL: "▲=", LOWER_EQUAL: "▼="}
 CALL_SHORT = {HIGHER: "Higher", LOWER: "Lower", HIGHER_EQUAL: "Higher/Eq",
@@ -100,6 +142,22 @@ CALL_SHORT = {HIGHER: "Higher", LOWER: "Lower", HIGHER_EQUAL: "Higher/Eq",
 POSITION_LABELS = {pos: key for key, pos in text.POSITION_KEYS.items()}
 
 BANNER_KINDS = ("neutral", "good", "bad", "recover")
+SIDE_VIEWS = (("count", "Count & plays"), ("odds", "Odds table"), ("cards", "Cards left"))
+TEXT_INPUTS = (tk.Entry, ttk.Entry, tk.Text, tk.Spinbox)  # ttk.Combobox is a ttk.Entry
+
+
+def _typing_in(widget) -> bool:
+    """True if `widget` is a field you can type in right now. A read-only
+    one (the cards-left text, a fixed-choice list) leaves the keys to the
+    game, so clicking it doesn't switch the shortcuts off."""
+    if not isinstance(widget, TEXT_INPUTS):
+        return False
+    try:
+        if isinstance(widget, ttk.Entry):
+            return not (widget.instate(["disabled"]) or widget.instate(["readonly"]))
+        return str(widget.cget("state")) == "normal"
+    except tk.TclError:
+        return False
 
 
 @dataclass
@@ -117,62 +175,73 @@ def _rank_name(rank: int) -> str:
     return {0: "Joker", 11: "Jack", 12: "Queen", 13: "King", 14: "Ace"}.get(rank, str(rank))
 
 
-def _themed_toplevel(parent: tk.Misc, title: str) -> tk.Toplevel:
-    win = tk.Toplevel(parent)
-    win.title(title)
-    themes.paint_window(win, themes.current())
-    return win
+def _why_not(card: Card, call: str, inclusive_left: int) -> str:
+    """Why a call isn't offered on this card, in words (the hint line).
+    The reason itself comes from the engine (call_blocked_reason)."""
+    reason = call_blocked_reason(card, call, inclusive_left)
+    tie = inclusive_left > 0
+    if reason == NO_INCLUSIVE_LEFT:
+        return "No inclusive calls left!"
+    if reason == JOKER_USE_INCLUSIVE:
+        return ("On a joker, use Higher or Equal / Lower or Equal: it wins just as surely, "
+                "and it recovers a failed box if you have one.")
+    if reason == NOTHING_LOWER:
+        return "Nothing is lower than a 2: call Higher" + (
+            " (or Lower or Equal, which wins on a tie)." if tie else ".")
+    if reason == NOTHING_HIGHER:
+        return "Nothing is higher than an A: call Lower" + (
+            " (or Higher or Equal, which wins on a tie)." if tie else ".")
+    return ""
 
 
 # --------------------------------------------------------------------------- #
-# Dialogs
+# In-page panels
 # --------------------------------------------------------------------------- #
 
-class GameSetupDialog:
-    """Modal dialog for jokers, inclusive calls and the show-failed option."""
+class GameSetupPanel:
+    """New Game settings, shown beside the board instead of a pop-up."""
 
-    def __init__(self, parent: tk.Misc, initial: Optional[GameSettings] = None):
-        initial = initial or GameSettings()
-        self.result: Optional[GameSettings] = None
-        self.dialog = _themed_toplevel(parent, "New Game")
-        self.dialog.transient(parent)
-        self.dialog.resizable(False, False)
-
-        frame = ttk.Frame(self.dialog, padding=16)
-        frame.pack(fill="both")
-        ttk.Label(frame, text="New Game", style="Heading.TLabel").grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
-
-        self.joker_var = tk.StringVar(value=str(initial.jokers))
-        self.calls_var = tk.StringVar(value=str(initial.inclusive_calls))
-        self.show_var = tk.StringVar(value="Yes" if initial.show_failed else "No")
-        self.calls_combo = ttk.Combobox(frame, textvariable=self.calls_var, width=8)
-        rows = [
-            ("Jokers in the deck:", ttk.Combobox(frame, textvariable=self.joker_var, width=8,
-                                                 state="readonly",
-                                                 values=list(range(MAX_JOKERS + 1)))),
-            ("Inclusive calls:", self.calls_combo),
-            ("Show failed cards when recovering:",
-             ttk.Combobox(frame, textvariable=self.show_var, width=8, state="readonly",
-                          values=["Yes", "No"])),
-        ]
-        for r, (label, widget) in enumerate(rows, start=1):
-            ttk.Label(frame, text=label).grid(row=r, column=0, sticky="w", pady=4)
-            widget.grid(row=r, column=1, sticky="w", padx=(10, 0), pady=4)
-        self.help_label = ttk.Label(frame, text="", style="Muted.TLabel")
-        self.help_label.grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 10))
-
-        buttons = ttk.Frame(frame)
-        buttons.grid(row=5, column=0, columnspan=2, sticky="e")
-        ttk.Button(buttons, text="Cancel", command=self.dialog.destroy).pack(side="right")
+    def __init__(self, parent: tk.Misc, on_start: Callable[[GameSettings], None],
+                 on_cancel: Callable[[], None]):
+        self.on_start, self.on_cancel = on_start, on_cancel
+        self.frame = ttk.Frame(parent, style="Panel.TFrame", padding=(14, 12))
+        ttk.Label(self.frame, text="New Game", style="PanelHeading.TLabel").grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        self.joker_var = tk.StringVar(value="0")
+        self.calls_var = tk.StringVar(value="5")
+        self.show_var = tk.BooleanVar(value=True)
+        ttk.Label(self.frame, text="Jokers in the deck:", style="Panel.TLabel").grid(
+            row=1, column=0, sticky="w", pady=3)
+        self.joker_combo = ttk.Combobox(self.frame, textvariable=self.joker_var, width=6,
+                                        state="readonly", values=list(range(MAX_JOKERS + 1)))
+        self.joker_combo.grid(row=1, column=1, sticky="w", padx=(10, 0))
+        ttk.Label(self.frame, text="Inclusive calls:", style="Panel.TLabel").grid(
+            row=2, column=0, sticky="w", pady=3)
+        self.calls_combo = ttk.Combobox(self.frame, textvariable=self.calls_var, width=6)
+        self.calls_combo.grid(row=2, column=1, sticky="w", padx=(10, 0))
+        ttk.Checkbutton(self.frame, text="Show failed cards when recovering",
+                        variable=self.show_var, style="Panel.TCheckbutton").grid(
+            row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.help_label = ttk.Label(self.frame, text="", style="PanelMuted.TLabel")
+        self.help_label.grid(row=4, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.error_label = ttk.Label(self.frame, text="", style="Error.TLabel", wraplength=300)
+        wrap_to(self.error_label, pad=20)
+        buttons = ttk.Frame(self.frame, style="Panel.TFrame")
+        buttons.grid(row=6, column=0, columnspan=2, sticky="w", pady=(12, 0))
         ttk.Button(buttons, text="Start Game", style="Accent.TButton",
-                   command=self._confirm).pack(side="right", padx=6)
-        self.dialog.bind("<Return>", lambda e: self._confirm())
-        self.dialog.bind("<Escape>", lambda e: self.dialog.destroy())
-
+                   command=self.start).pack(side="left")
+        ttk.Button(buttons, text="Cancel", command=self.on_cancel).pack(side="left", padx=6)
+        for widget in (self.joker_combo, self.calls_combo):
+            widget.bind("<Return>", lambda e: self.start())
+            widget.bind("<Escape>", lambda e: self.on_cancel())
         self.joker_var.trace_add("write", self._update_range)
         self._update_range()
-        self.dialog.grab_set()
+
+    def load(self, settings: GameSettings) -> None:
+        self.joker_var.set(str(settings.jokers))
+        self.calls_var.set(str(settings.inclusive_calls))
+        self.show_var.set(settings.show_failed)
+        self.error_label.grid_remove()
 
     def _update_range(self, *_):
         jokers = int(self.joker_var.get())
@@ -180,56 +249,56 @@ class GameSetupDialog:
         self.calls_combo["values"] = list(range(limit + 1))
         self.help_label.config(text=f"Inclusive calls: 0 to {limit} with {jokers} joker(s).")
 
-    def _confirm(self):
+    def show_error(self, message: str) -> None:
+        self.error_label.config(text=message)
+        self.error_label.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+
+    def start(self) -> None:
         try:
             jokers = int(self.joker_var.get())
             calls = int(self.calls_var.get())
         except ValueError:
-            messagebox.showwarning("Invalid input", "Please enter whole numbers.",
-                                   parent=self.dialog)
+            self.show_error("Please enter whole numbers.")
             return
         limit = max_inclusive_calls(jokers)
         if not 0 <= calls <= limit:
-            messagebox.showwarning("Invalid input",
-                                   f"Inclusive calls must be 0-{limit} with {jokers} joker(s).",
-                                   parent=self.dialog)
+            self.show_error(f"Inclusive calls must be 0-{limit} with {jokers} joker(s).")
             return
-        self.result = GameSettings(jokers, calls, self.show_var.get() == "Yes")
-        self.dialog.destroy()
+        self.error_label.grid_remove()
+        self.on_start(GameSettings(jokers, calls, bool(self.show_var.get())))
 
 
-class CardPickerDialog:
-    """Pick the nine cards dealt into the box (Game Assistant).
+class CardPickerPanel:
+    """Pick the nine cards dealt into the box (Game Assistant), beside the board.
 
     Each physical card, including each joker, has its own button, so picking
     one joker never removes the other.
     """
 
-    def __init__(self, parent: tk.Misc, jokers: int, on_pick=None):
+    def __init__(self, parent: tk.Misc, theme: Theme, jokers: int,
+                 on_pick: Callable[[List[Card]], None], on_done: Callable[[List[Card]], None],
+                 on_cancel: Callable[[], None]):
         self.result: Optional[List[Card]] = None
         self.picked: List[Card] = []
         self._picked_buttons: List[tk.Button] = []
-        self._on_pick = on_pick
-        self.dialog = _themed_toplevel(parent, "Select the Nine Box Cards")
-        self.dialog.transient(parent)
-
-        frame = ttk.Frame(self.dialog, padding=14)
-        frame.pack(fill="both")
-        self.info = ttk.Label(frame, text="", style="Heading.TLabel")
-        self.info.pack(anchor="w", pady=(0, 8))
-        self.grid = CardGrid(frame, themes.current(), self._pick, jokers=jokers)
-        self.grid.pack()
-        controls = ttk.Frame(frame)
-        controls.pack(fill="x", pady=(10, 0))
-        ttk.Button(controls, text="Cancel", command=self.dialog.destroy).pack(side="right")
-        ttk.Button(controls, text="Undo Pick", command=self._unpick).pack(side="right", padx=6)
+        self._on_pick, self._on_done = on_pick, on_done
+        self.frame = ttk.Frame(parent, style="Panel.TFrame", padding=(14, 12))
+        self.info = ttk.Label(self.frame, text="", style="PanelHeading.TLabel")
+        self.info.pack(anchor="w")
+        hint = ttk.Label(self.frame, text="Click the cards in your box, from the top-left box "
+                         "to the bottom-right box.", style="PanelMuted.TLabel", wraplength=420)
+        hint.pack(anchor="w", fill="x", pady=(2, 8))
+        wrap_to(hint)
+        self.grid = CardGrid(self.frame, theme, self._pick, jokers=jokers, style="Panel.TFrame")
+        self.grid.pack(anchor="w")
+        controls = ttk.Frame(self.frame, style="Panel.TFrame")
+        controls.pack(anchor="w", pady=(10, 0))
+        ttk.Button(controls, text="Undo Pick", command=self._unpick).pack(side="left")
+        ttk.Button(controls, text="Cancel", command=on_cancel).pack(side="left", padx=6)
         self._update_info()
-        self.dialog.grab_set()
 
     def _update_info(self):
-        n = len(self.picked)
-        self.info.config(text=f"Click the cards in the box, top-left to bottom-right "
-                              f"({n}/{BOX_SIZE} picked)")
+        self.info.config(text=f"Deal: pick the nine box cards ({len(self.picked)}/{BOX_SIZE})")
 
     def _pick(self, card: Card, button: tk.Button):
         if len(self.picked) >= BOX_SIZE or str(button.cget("state")) == "disabled":
@@ -238,19 +307,17 @@ class CardPickerDialog:
         self._picked_buttons.append(button)
         self.grid.disable(button)
         self._update_info()
-        if self._on_pick:
-            self._on_pick(list(self.picked))
+        self._on_pick(list(self.picked))
         if len(self.picked) == BOX_SIZE:
             self.result = list(self.picked)
-            self.dialog.destroy()
+            self._on_done(self.result)
 
     def _unpick(self):
         if self.picked:
             self.picked.pop()
             self.grid.enable(self._picked_buttons.pop())
             self._update_info()
-            if self._on_pick:
-                self._on_pick(list(self.picked))
+            self._on_pick(list(self.picked))
 
 
 # --------------------------------------------------------------------------- #
@@ -266,22 +333,23 @@ class PlayerGUI:
     WELCOME = "Welcome to Beat the Box! Press New Game (Ctrl+N) to start."
     START_MESSAGE = "Game started! Select a box, then make your call."
     CARD_SIZE = (96, 128)
-    HISTORY_ROWS = 8
+    HISTORY_ROWS = 4                # the list starts this tall and grows into spare room
+    SIDE_WIDTH = (300, 520)         # narrowest and widest the side panel gets
 
-    def __init__(self, root: tk.Misc):
-        self.root = root
-        self.root.title(self.TITLE)
-        self.theme: Theme = themes.use(root)
+    def __init__(self, parent: tk.Misc, app=None):
+        self.app = app
+        self.root = parent.winfo_toplevel()
+        self.standalone = parent is self.root
+        if self.standalone:
+            self.root.title(self.TITLE)
+        self.theme: Theme = themes.use(self.root)
         self.game: Optional[Game] = None
         self.settings = GameSettings()
         self.selected: Optional[int] = None
         self.history: List[str] = []
-        self.prob_window: Optional[tk.Toplevel] = None
-        self.prob_tree: Optional[ttk.Treeview] = None
-        self.cards_window: Optional[tk.Toplevel] = None
-        self.cards_text: Optional[tk.Text] = None
+        self.mode = "play"                       # play | setup | pick
         self._text_widgets: List[tk.Misc] = []
-        self._windows: List[tk.Misc] = []
+        self._windows: List[tk.Misc] = []        # only used when standalone
         self.banner_var = tk.StringVar(value="Beat the Box")
         self.banner_kind = "neutral"
         self.status_var = tk.StringVar(value=self.WELCOME)
@@ -291,72 +359,51 @@ class PlayerGUI:
         self.count_vars = [tk.StringVar(value="0") for _ in COUNT_METHOD_NAMES]
         self.lean_var = tk.StringVar(value="")
         self.odds_var = tk.BooleanVar(value=bool(app_settings.get("show_odds")))
-        self.theme_var = tk.StringVar(value=self.theme.name)
-        self.build_menu()
+        self.side_view = tk.StringVar(value="count")
+
+        self.frame = ttk.Frame(parent, padding=14)
+        self.frame.grid(row=0, column=0, sticky="nsew")
+        parent.rowconfigure(0, weight=1)
+        parent.columnconfigure(0, weight=1)
         self.build()
         self.bind_shortcuts()
-        themes.subscribe(self.root, self.on_theme)
+        themes.subscribe(self.frame, self.on_theme)
         self.refresh()
 
     # ----- layout --------------------------------------------------------- #
 
-    def build_menu(self):
-        bar = tk.Menu(self.root)
-        game = tk.Menu(bar, tearoff=0)
-        game.add_command(label="New Game", accelerator="Ctrl+N", command=self.new_game)
-        game.add_command(label="Undo", accelerator="Ctrl+Z", command=self.undo)
-        game.add_separator()
-        game.add_command(label="Close Window", command=self.root.destroy)
-        bar.add_cascade(label="Game", menu=game)
-
-        view = tk.Menu(bar, tearoff=0)
-        view.add_checkbutton(label="Show Odds on Cards", accelerator="Ctrl+O",
-                             variable=self.odds_var, command=self.on_odds_changed)
-        view.add_command(label="Probabilities...", accelerator="Ctrl+P",
-                         command=self.show_probabilities)
-        view.add_command(label="Remaining Cards...", accelerator="Ctrl+L",
-                         command=self.show_remaining_cards)
-        view.add_separator()
-        view.add_cascade(label="Theme", menu=self._theme_menu(view))
-        bar.add_cascade(label="View", menu=view)
-
-        help_menu = tk.Menu(bar, tearoff=0)
-        help_menu.add_command(label="How to Play", accelerator="Ctrl+R", command=self.show_rules)
-        help_menu.add_command(label="Strategy Guide", accelerator="Ctrl+Y",
-                              command=self.show_strategy)
-        help_menu.add_command(label="Keyboard Shortcuts", accelerator="Ctrl+H",
-                              command=self.show_keyboard_help)
-        help_menu.add_separator()
-        help_menu.add_command(label="About This Tool", command=self.show_about)
-        bar.add_cascade(label="Help", menu=help_menu)
-        self.root.config(menu=bar)
-        self.menu = bar
-
-    def _theme_menu(self, parent: tk.Menu) -> tk.Menu:
-        menu = tk.Menu(parent, tearoff=0)
-        for number, name in enumerate(themes.theme_names(), start=1):
-            menu.add_radiobutton(label=f"{number}. {name}", value=name, variable=self.theme_var,
-                                 command=lambda n=name: themes.set_theme(n, self.root))
-        return menu
-
     def build(self):
-        self.main = ttk.Frame(self.root, padding=14)
-        self.main.grid(row=0, column=0, sticky="nsew")
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
+        f = self.frame
+        f.columnconfigure(0, weight=1)
+        f.rowconfigure(2, weight=1)
 
-        toolbar = ttk.Frame(self.main)
-        toolbar.grid(row=0, column=0, columnspan=3, sticky="ew")
-        ttk.Label(toolbar, text=self.HEADING, style="Heading.TLabel").pack(side="left")
-        ttk.Checkbutton(toolbar, text="Show odds (Ctrl+O)", variable=self.odds_var,
-                        command=self.on_odds_changed).pack(side="right", padx=(10, 0))
-        ttk.Button(toolbar, text="Undo (Ctrl+Z)", command=self.undo).pack(side="right", padx=4)
-        ttk.Button(toolbar, text="New Game (Ctrl+N)", style="Accent.TButton",
-                   command=self.new_game).pack(side="right", padx=4)
+        self.toolbar = toolbar = ttk.Frame(f)
+        toolbar.grid(row=0, column=0, columnspan=2, sticky="ew")
+        self.heading_label = ttk.Label(toolbar, text=self.HEADING, style="Heading.TLabel")
+        self.heading_label.pack(side="left")
+        odds_check = ttk.Checkbutton(toolbar, text="Show odds & counts (Ctrl+O)",
+                                     variable=self.odds_var, command=self.on_odds_changed)
+        odds_check.pack(side="right", padx=(10, 0))
+        undo_button = ttk.Button(toolbar, text="Undo (Ctrl+Z)", command=self.undo)
+        undo_button.pack(side="right", padx=4)
+        new_button = ttk.Button(toolbar, text="New Game (Ctrl+N)", style="Accent.TButton",
+                                command=self.new_game)
+        new_button.pack(side="right", padx=4)
+        # In a narrow window the toolbar drops the shortcut hints.
+        self._toolbar_labels = []
+        for widget, short in ((new_button, "New Game"), (undo_button, "Undo"),
+                              (odds_check, "Odds & counts")):
+            long = str(widget.cget("text"))
+            long_width = widget.winfo_reqwidth()
+            widget.configure(text=short)
+            self._toolbar_labels.append((widget, long, short, long_width))
+            widget.configure(text=long)
+        self.toolbar_short = False
+        toolbar.bind("<Configure>", self._fit_toolbar)
 
         # The result banner: what you called and what happened, big.
-        self.banner = tk.Frame(self.main, borderwidth=0, highlightthickness=0)
-        self.banner.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(10, 10))
+        self.banner = tk.Frame(f, borderwidth=0, highlightthickness=0)
+        self.banner.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 10))
         self.banner_label = tk.Label(self.banner, textvariable=self.banner_var, anchor="w",
                                      justify="left", font=font("ui", 17, "bold"), padx=14)
         self.banner_label.grid(row=0, column=0, sticky="ew", pady=(8, 0))
@@ -370,34 +417,98 @@ class PlayerGUI:
         self.banner.columnconfigure(0, weight=1)
         self.banner.bind("<Configure>", self._wrap_banner)
 
-        board = ttk.Frame(self.main)
-        board.grid(row=2, column=0, sticky="n")
+        # The board grows and shrinks with the window; so do the cards.
+        self.board = board = ttk.Frame(f)
+        board.grid(row=2, column=0, sticky="nsew")
         width, height = self.CARD_SIZE
         self.box_views: List[CardView] = []
         for i in range(BOX_SIZE):
             view = CardView(board, self.theme, width, height,
                             command=lambda pos=i: self.box_clicked(pos))
-            view.grid(row=i // 3, column=i % 3, padx=3, pady=2)
+            view.grid(row=i // 3, column=i % 3, padx=3, pady=2, sticky="nsew")
             self.box_views.append(view)
+        for n in range(3):
+            board.rowconfigure(n, weight=1, uniform="rows", minsize=90)
+            board.columnconfigure(n, weight=1, uniform="cols", minsize=70)
 
+        # The side panel scrolls if the window is too short for it, and takes
+        # whatever width the cards don't need (between SIDE_WIDTH's limits).
+        self.side_scroll = ScrollFrame(f, width=self.SIDE_WIDTH[0])
+        self.side_scroll.grid(row=2, column=1, sticky="ns", padx=(16, 0))
+        self.side = self.side_scroll.body
         self.build_side_panel()
+        f.bind("<Configure>", self._share_width, add="+")
+        board.bind("<Configure>", self._share_width, add="+")
 
-        actions = ttk.Frame(self.main)
-        actions.grid(row=3, column=0, columnspan=2, pady=(12, 0))
+        # The calls span the page; their text shrinks if the window is narrow.
+        self.actions = ttk.Frame(f)
+        self.actions.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        prefix = f"Page{id(self)}"
+        self._call_styles = (f"{prefix}.CallUp.TButton", f"{prefix}.CallDown.TButton")
+        self._call_font_size = 0
         self.call_buttons = {}
-        for col, call in enumerate(CALLS):
-            style = "CallAccent.TButton" if call in INCLUSIVE_CALLS else "Call.TButton"
-            btn = ttk.Button(actions, style=style,
+        for col, call in enumerate(CALL_ORDER):
+            style = self._call_styles[0 if call in (HIGHER, HIGHER_EQUAL) else 1]
+            btn = ttk.Button(self.actions, style=style,
                              text=f"{CALL_ARROWS[call]} {CALL_LABELS[call]} ({CALL_KEYS[call]})",
                              command=lambda c=call: self.make_call(c))
-            btn.grid(row=0, column=col, padx=4)
+            btn.grid(row=0, column=col, padx=3, sticky="ew")
+            self.actions.columnconfigure(col, weight=1, uniform="calls")
             self.call_buttons[call] = btn
-
+        self.actions.bind("<Configure>", self._fit_call_buttons)
+        self._fit_call_buttons()
         self.paint()
 
+    def _fit_call_buttons(self, _event=None):
+        """Largest text size (12pt down to 8pt) at which every call label fits."""
+        width = self.actions.winfo_width()
+        if width <= 1:
+            width = 1000
+        room = width / len(self.call_buttons) - 30
+        labels = [str(b.cget("text")) for b in self.call_buttons.values()]
+        size = 8
+        for candidate in (12, 11, 10, 9):
+            spec = font("ui", candidate, "bold")
+            if all(text_width(self.actions, spec, label) <= room for label in labels):
+                size = candidate
+                break
+        if size != self._call_font_size:
+            self._call_font_size = size
+            style = ttk.Style(self.root)
+            for name in self._call_styles:
+                style.configure(name, font=font("ui", size, "bold"))
+
+    def _fit_toolbar(self, _event=None):
+        """Long labels ("New Game (Ctrl+N)") when they fit, short ones when not."""
+        width = self.toolbar.winfo_width()
+        if width <= 1:
+            return
+        need = self.heading_label.winfo_reqwidth() + sum(
+            long_width for *_rest, long_width in self._toolbar_labels) + 30   # + gaps
+        short = width < need
+        if short != self.toolbar_short:
+            self.toolbar_short = short
+            for widget, long, brief, _width in self._toolbar_labels:
+                widget.configure(text=brief if short else long)
+
+    def _share_width(self, _event=None):
+        """Give the cards the width their height allows; the side panel gets
+        the rest, within SIDE_WIDTH."""
+        try:
+            room = self.frame.winfo_width() - 28
+            board_height = self.board.winfo_height()
+        except tk.TclError:
+            return
+        if room <= 1 or board_height <= 1:
+            return
+        m = CardView.MARGIN
+        card_height = max(CardView.MIN_HEIGHT, board_height / 3 - 2 * m - CardView.FOOTER - 4)
+        board_need = 3 * (card_height * CardView.ASPECT + 2 * m + 6)
+        low, high = self.SIDE_WIDTH
+        self.side_scroll.set_width(int(max(low, min(high, room - board_need - 16))))
+
     def build_side_panel(self):
-        side = ttk.Frame(self.main)
-        side.grid(row=2, column=1, sticky="nsew", padx=(16, 0))
+        side = self.side
         tiles = ttk.Frame(side)
         tiles.pack(fill="x")
         for col, (caption, var) in enumerate((("Draw pile", self.cards_remaining_var),
@@ -407,8 +518,24 @@ class PlayerGUI:
                                                padx=(0 if col == 0 else 6, 0))
             tiles.columnconfigure(col, weight=1)
 
-        counts = ttk.Frame(side, style="Panel.TFrame", padding=(12, 8))
-        counts.pack(fill="x", pady=(10, 0))
+        self.setup_panel = GameSetupPanel(side, self.new_game, self.cancel_setup)
+        self.picker_panel: Optional[CardPickerPanel] = None
+        self.extra_panel = self.build_side_extra(side)
+
+        # Odds & counts: one switch (Ctrl+O) for the count, the plays and the
+        # odds; Ctrl+P / Ctrl+L show the odds table / cards left in the same place.
+        self.aids = ttk.Frame(side, style="Panel.TFrame", padding=(12, 6))
+        self.views = views = ttk.Frame(self.aids, style="Panel.TFrame")
+        views.pack(fill="x")
+        self.view_buttons = [
+            ttk.Radiobutton(views, text=label, value=value, variable=self.side_view,
+                            style="Panel.TRadiobutton", command=self.layout_side)
+            for value, label in SIDE_VIEWS]
+        flow_row(views, self.view_buttons)
+
+        self.count_frame = ttk.Frame(self.aids, style="Panel.TFrame")
+        counts = ttk.Frame(self.count_frame, style="Panel.TFrame")
+        counts.pack(fill="x", pady=(6, 0))
         ttk.Label(counts, text="Card count", style="PanelHeading.TLabel").grid(
             row=0, column=0, columnspan=3, sticky="w")
         for col, (name, var) in enumerate(zip(COUNT_METHOD_NAMES, self.count_vars)):
@@ -417,25 +544,87 @@ class PlayerGUI:
             ttk.Label(counts, textvariable=var, style="Panel.TLabel",
                       font=font("ui", 13, "bold")).grid(row=2, column=col, sticky="w")
             counts.columnconfigure(col, weight=1)
-        ttk.Label(counts, textvariable=self.lean_var, style="Panel.TLabel",
-                  wraplength=360).grid(row=3, column=0, columnspan=3, sticky="w", pady=(4, 0))
-
-        self.build_side_extra(side)
-
-        history = ttk.Frame(side, style="Panel.TFrame", padding=(12, 8))
-        history.pack(fill="both", expand=True, pady=(10, 0))
-        ttk.Label(history, text="Plays", style="PanelHeading.TLabel").pack(anchor="w")
-        inner = ttk.Frame(history, style="Panel.TFrame")
+        lean = ttk.Label(counts, textvariable=self.lean_var, style="Panel.TLabel",
+                         wraplength=360)
+        lean.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(4, 0))
+        wrap_to(lean)
+        ttk.Label(self.count_frame, text="Plays", style="PanelHeading.TLabel").pack(
+            anchor="w", pady=(6, 0))
+        inner = ttk.Frame(self.count_frame, style="Panel.TFrame")
         inner.pack(fill="both", expand=True, pady=(4, 0))
-        self.history_list = tk.Listbox(inner, height=self.HISTORY_ROWS, width=30, activestyle="none",
-                                       font=font("ui", 10))
+        self.history_list = tk.Listbox(inner, height=self.HISTORY_ROWS, width=30,
+                                       activestyle="none", font=font("ui", 10))
         scroll = ttk.Scrollbar(inner, command=self.history_list.yview)
         self.history_list.configure(yscrollcommand=scroll.set)
         self.history_list.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
 
-    def build_side_extra(self, side: ttk.Frame):
-        """Hook for subclasses: a panel between the counts and the history."""
+        self.odds_frame = ttk.Frame(self.aids, style="Panel.TFrame")
+        columns = {"box": ("Box", 42, "center"), "card": ("Card", 58, "center"),
+                   **{call: (CALL_ARROWS[call], 60, "center") for call in CALL_ORDER},
+                   "exact": ("Tie", 60, "center"), "best": ("Best", 78, "center")}
+        holder, self.prob_tree = scrolled_tree(self.odds_frame, columns, height=9,
+                                               style="Panel.TFrame")
+        holder.pack(fill="both", expand=True, pady=(8, 0))
+        note = ttk.Label(self.odds_frame, text="Chance each call wins against the cards still "
+                         "in the pile. Tie = exact match or joker: the recovery chance on an "
+                         "inclusive call. Best = the better plain call.",
+                         style="PanelMuted.TLabel", wraplength=360)
+        note.pack(anchor="w", fill="x", pady=(6, 0))
+        wrap_to(note)
+
+        self.cards_frame = ttk.Frame(self.aids, style="Panel.TFrame")
+        cards_scroll = ttk.Scrollbar(self.cards_frame)
+        self.cards_text = tk.Text(self.cards_frame, width=24, height=10,
+                                  font=font("mono", 11), padx=10, pady=8,
+                                  yscrollcommand=cards_scroll.set)
+        cards_scroll.configure(command=self.cards_text.yview)
+        themes.style_text_widget(self.cards_text, self.theme)
+        self._text_widgets.append(self.cards_text)
+        cards_scroll.pack(side="right", fill="y", pady=(8, 0))
+        self.cards_text.pack(side="left", fill="both", expand=True, pady=(8, 0))
+
+        self.aids_hint = ttk.Frame(side, style="Panel.TFrame", padding=(12, 10))
+        hint = ttk.Label(self.aids_hint, text="Odds, card count and plays are hidden. "
+                         "Show them with Ctrl+O (Show odds & counts).",
+                         style="PanelMuted.TLabel", wraplength=300)
+        hint.pack(anchor="w", fill="x")
+        wrap_to(hint)
+        self.layout_side()
+
+    def build_side_extra(self, side: ttk.Frame) -> Optional[ttk.Frame]:
+        """Hook for subclasses: a panel between the tiles and the odds & counts."""
+        return None
+
+    def layout_side(self):
+        """Show the side-panel parts that fit the current mode and switches."""
+        parts = [self.setup_panel.frame, self.aids, self.aids_hint, self.count_frame,
+                 self.odds_frame, self.cards_frame]
+        if self.picker_panel is not None:
+            parts.append(self.picker_panel.frame)
+        if self.extra_panel is not None:
+            parts.append(self.extra_panel)
+        for part in parts:
+            part.pack_forget()
+        if self.mode == "setup":
+            self.setup_panel.frame.pack(fill="x", pady=(10, 0))
+            self.side_scroll.update_layout()
+            return
+        if self.mode == "pick" and self.picker_panel is not None:
+            self.picker_panel.frame.pack(fill="x", pady=(10, 0))
+            self.side_scroll.update_layout()
+            return
+        if self.extra_panel is not None:
+            self.extra_panel.pack(fill="x", pady=(10, 0))
+        if self.odds_var.get():
+            self.aids.pack(fill="both", expand=True, pady=(10, 0))
+            view = {"count": self.count_frame, "odds": self.odds_frame,
+                    "cards": self.cards_frame}[self.side_view.get()]
+            view.pack(fill="both", expand=True)
+            self.update_side_view()
+        else:
+            self.aids_hint.pack(fill="x", pady=(10, 0))
+        self.side_scroll.update_layout()
 
     def _wrap_banner(self, _event=None):
         """Wrap the banner text to the space left beside the Skip button."""
@@ -447,6 +636,15 @@ class PlayerGUI:
         wrap = max(200, width - 30 - reserve)
         self.banner_label.configure(wraplength=wrap)
         self.status_label.configure(wraplength=wrap)
+
+    # ----- keys ----------------------------------------------------------- #
+
+    def active(self) -> bool:
+        """True while this page is the one showing."""
+        try:
+            return bool(self.frame.winfo_ismapped())
+        except tk.TclError:
+            return False
 
     def bind_shortcuts(self):
         actions = {
@@ -461,7 +659,7 @@ class PlayerGUI:
                 continue
             plain_letter = action in actions
             for seq in sequences:
-                self.root.bind(seq, self._key_handler(handler, plain_letter))
+                self.root.bind(seq, self._key_handler(handler, plain_letter), add="+")
         keypad = {"7": "KP_Home", "8": "KP_Up", "9": "KP_Prior", "4": "KP_Left",
                   "5": "KP_Begin", "6": "KP_Right", "1": "KP_End", "2": "KP_Down",
                   "3": "KP_Next"}
@@ -470,29 +668,29 @@ class PlayerGUI:
             for seq in (f"<KeyPress-{key}>", f"<KeyPress-KP_{key}>",
                         f"<KeyPress-{keypad[key]}>"):
                 try:
-                    self.root.bind(seq, handler)
+                    self.root.bind(seq, handler, add="+")
                 except tk.TclError:
                     pass  # keysym not known on this platform
 
     def _key_handler(self, action, plain: bool):
         def handler(event):
+            if not self.active():
+                return None                      # another page is showing
             # Plain keys (W, 7, ...) must not fire on Ctrl+W, Ctrl+7, ...
             if plain and event.state & CONTROL_MASK:
                 return None
+            if _typing_in(event.widget):
+                return None                      # typing in a field: the keys are its own
             action()
             return "break"
         return handler
 
     # ----- game flow ------------------------------------------------------ #
 
-    def ask_settings(self) -> Optional[GameSettings]:
-        dialog = GameSetupDialog(self.root, self.settings)
-        self.root.wait_window(dialog.dialog)
-        return dialog.result
-
     def new_game(self, settings: Optional[GameSettings] = None) -> bool:
-        settings = settings or self.ask_settings()
+        """With settings: start a game. Without: show the New Game panel."""
         if settings is None:
+            self.show_setup()
             return False
         game = self.create_game(settings)
         if game is None:
@@ -500,14 +698,31 @@ class PlayerGUI:
         self.start(settings, game, self.START_MESSAGE)
         return True
 
+    def show_setup(self):
+        self.setup_panel.load(self.settings)
+        self.mode = "setup"
+        self.layout_side()
+        self.set_status("Choose the settings beside the board, then Start Game.")
+        self.refresh()
+        self.setup_panel.calls_combo.focus_set()
+
+    def cancel_setup(self):
+        self.mode = "play"
+        self.layout_side()
+        self.set_status("Select a box and make your call." if self.game else self.WELCOME)
+        self.refresh()
+
     def start(self, settings: GameSettings, game: Game, message: str):
         self.settings = settings
         self.game = game
         self.selected = None
         self.history = []
+        self.mode = "play"
+        self.layout_side()
         self.set_banner("New game: nine cards are in the box", "neutral")
         self.set_status(message)
         self.refresh()
+        self.frame.focus_set()
 
     def create_game(self, settings: GameSettings) -> Optional[Game]:
         return Game.new(settings.jokers, settings.inclusive_calls)
@@ -518,8 +733,17 @@ class PlayerGUI:
             return False
         return True
 
+    def _need_play_mode(self) -> bool:
+        if self.mode == "setup":
+            self.set_status("Finish the New Game settings beside the board, or Cancel.")
+            return False
+        if self.mode == "pick":
+            self.set_status("Pick the nine box cards beside the board first, or Cancel.")
+            return False
+        return True
+
     def box_clicked(self, position: int):
-        if not self._need_game():
+        if not self._need_play_mode() or not self._need_game():
             return
         if self.game.recovery_pending:
             if position in self.game.failed:
@@ -541,8 +765,17 @@ class PlayerGUI:
             self.set_status("That box has failed. Choose another box.")
             return
         self.selected = position
-        self.set_status(f"Selected {card_name(self.game.box[position])}. "
-                        "Call Higher or Lower, or use an inclusive call.")
+        card = self.game.box[position]
+        if card.is_joker and self.game.inclusive_left > 0:
+            if self.game.failed:
+                hint = "A joker: Higher or Equal / Lower or Equal is a sure win plus a recovery."
+            else:
+                hint = ("A joker: Higher or Equal / Lower or Equal is a sure win, but no box "
+                        "has failed yet, so there is nothing to recover. You can hold it and "
+                        "play another box first.")
+        else:
+            hint = "Make your call."
+        self.set_status(f"Selected {card_name(card)}. {hint}")
         self.refresh()
 
     def drawn_card(self) -> Optional[Card]:
@@ -550,7 +783,7 @@ class PlayerGUI:
         return None
 
     def make_call(self, call: str):
-        if not self._need_game():
+        if not self._need_play_mode() or not self._need_game():
             return
         game = self.game
         if game.recovery_pending:
@@ -562,8 +795,9 @@ class PlayerGUI:
         if self.selected is None or game.box[self.selected] is None:
             self.set_status("Select a box first (click it, or use the number keys).")
             return
-        if call in INCLUSIVE_CALLS and game.inclusive_left <= 0:
-            self.set_status("No inclusive calls left!")
+        target = game.box[self.selected]
+        if call not in offered_calls(target, game.inclusive_left):
+            self.set_status(_why_not(target, call, game.inclusive_left))
             return
         try:
             drawn = self.drawn_card()
@@ -614,7 +848,7 @@ class PlayerGUI:
         self.check_game_over()
 
     def undo(self):
-        if not self._need_game():
+        if not self._need_play_mode() or not self._need_game():
             return
         if not self.game.undo():
             self.set_status("No moves to undo!")
@@ -628,25 +862,21 @@ class PlayerGUI:
         self.refresh()
 
     def check_game_over(self):
+        """At the end of a game the banner says how it went (no pop-up)."""
         game = self.game
         if not game.is_over:
             return
         self.selected = None
         if game.won:
-            title = "You beat the box!"
-            body = (f"You got through the whole pile with {game.boxes_left} "
-                    f"box{'es' if game.boxes_left != 1 else ''} left.")
-            self.set_banner(f"★ {title}", "good")
+            boxes = f"{game.boxes_left} box{'es' if game.boxes_left != 1 else ''}"
+            self.set_banner(f"★ You beat the box! {boxes} left.", "good")
+            self.set_status("You got through the whole pile. Press New Game (Ctrl+N) "
+                            "to play again.")
         else:
-            title = "The box wins"
-            body = f"All nine boxes failed with {game.cards_left} cards left in the pile."
-            self.set_banner(title, "bad")
-        self.set_status(f"{body} Press New Game (Ctrl+N) to play again.")
+            self.set_banner("The box wins: all nine boxes failed.", "bad")
+            self.set_status(f"{game.cards_left} cards were left in the pile. Press New Game "
+                            "(Ctrl+N) to play again.")
         self.refresh()
-        self.announce(title, body)
-
-    def announce(self, title: str, body: str):
-        messagebox.showinfo(title, body, parent=self.root)
 
     # ----- drawing -------------------------------------------------------- #
 
@@ -657,7 +887,7 @@ class PlayerGUI:
 
     def set_status(self, message: str):
         game = self.game
-        if (game and not game.is_over and not game.recovery_pending
+        if (game and self.mode == "play" and not game.is_over and not game.recovery_pending
                 and game.failed and game.inclusive_left > 0
                 and any(c is not None and c.is_joker for c in game.box)):
             message += "  Tip: an inclusive call on the joker earns a recovery."
@@ -675,16 +905,18 @@ class PlayerGUI:
 
     def paint(self):
         """Colours for the plain tk widgets (ttk ones follow the style)."""
-        themes.paint_window(self.root, self.theme)
+        if self.standalone:
+            themes.paint_window(self.root, self.theme)
         self.paint_banner()
         themes.style_text_widget(self.history_list, self.theme)
         themes.repaint(self._text_widgets, self._windows, self.theme)
 
     def on_theme(self, theme: Theme):
         self.theme = theme
-        self.theme_var.set(theme.name)
         for view in self.box_views:
             view.set_theme(theme)
+        if self.picker_panel is not None:
+            self.picker_panel.grid.set_theme(theme)
         self.paint()
         self.refresh()
 
@@ -693,14 +925,18 @@ class PlayerGUI:
         self.on_odds_changed()
 
     def on_odds_changed(self):
-        """Odds on or off for this window only; Settings holds the default."""
+        """Odds & counts on or off for this page only; Settings holds the default."""
+        self.layout_side()
         self.refresh()
 
     def refresh(self):
+        self.side_scroll.update_layout()
         game = self.game
-        odds = game.odds_all() if (game and self.odds_var.get() and not game.is_over) else None
-        for i, view in enumerate(self.box_views):
-            self._show_box(i, view, odds)
+        aids = bool(self.odds_var.get())
+        odds = game.odds_all() if (game and aids and not game.is_over) else None
+        if self.mode != "pick":
+            for i, view in enumerate(self.box_views):
+                self._show_box(i, view, odds)
         self.history_list.delete(0, "end")
         for line in self.history:
             self.history_list.insert("end", line)
@@ -709,12 +945,13 @@ class PlayerGUI:
             for btn in self.call_buttons.values():
                 btn.state(["disabled"])
             self.skip_button.grid_remove()
+            self._wrap_banner()
             return
-        can_play = (not game.is_over and not game.recovery_pending
-                    and self.selected is not None)
+        can_play = (self.mode == "play" and not game.is_over and not game.recovery_pending
+                    and self.selected is not None and game.box[self.selected] is not None)
+        offered = offered_calls(game.box[self.selected], game.inclusive_left) if can_play else ()
         for call, btn in self.call_buttons.items():
-            enabled = can_play and (call not in INCLUSIVE_CALLS or game.inclusive_left > 0)
-            btn.state(["!disabled"] if enabled else ["disabled"])
+            btn.state(["!disabled"] if call in offered else ["disabled"])
         if game.recovery_pending:
             self.skip_button.grid()
         else:
@@ -728,8 +965,7 @@ class PlayerGUI:
         for var, value, lean in zip(self.count_vars, game.counts, leans):
             var.set((f"{value:+d}" if value else "0") + arrows[lean])
         self.lean_var.set(self.lean_message(leans))
-        self.update_probabilities()
-        self.update_remaining_cards()
+        self.update_side_view(odds)
 
     @staticmethod
     def lean_message(leans: List[Optional[str]]) -> str:
@@ -762,68 +998,61 @@ class PlayerGUI:
             right = f"▲{odds[i].higher * 100:.0f}% ▼{odds[i].lower * 100:.0f}%"
         view.show(card, state, footer_left=key, footer_right=right)
 
-    # ----- side windows --------------------------------------------------- #
+    # ----- odds table, cards left, help ----------------------------------- #
 
-    def show_probabilities(self):
+    def _show_side_view(self, view: str):
         if not self._need_game():
             return
-        if self.prob_window and self.prob_window.winfo_exists():
-            self.prob_window.lift()
-            return
-        self.prob_window = _themed_toplevel(self.root, "Probabilities")
-        self._windows.append(self.prob_window)
-        frame = ttk.Frame(self.prob_window, padding=10)
-        frame.pack(fill="both", expand=True)
-        columns = ("box", "card", *CALLS, "exact", "best")
-        tree = ttk.Treeview(frame, columns=columns, show="headings", height=9)
-        headings = {"box": "Box", "card": "Card", "exact": "Recovery chance",
-                    "best": "Best plain call", **CALL_LABELS}
-        for col in columns:
-            tree.heading(col, text=headings[col])
-            tree.column(col, width=110 if col not in ("box", "card") else 56, anchor="center")
-        tree.pack(fill="both", expand=True)
-        ttk.Label(frame, text="Odds use the cards still in the draw pile. Recovery chance = "
-                  "exact match or joker on an inclusive call.", style="Muted.TLabel").pack(
-            anchor="w", pady=(8, 0))
-        self.prob_tree = tree
-        self.update_probabilities()
+        self.side_view.set(view)
+        if not self.odds_var.get():
+            self.odds_var.set(True)
+        self.layout_side()
+        self.refresh()
 
-    def update_probabilities(self):
-        if not (self.prob_window and self.prob_window.winfo_exists() and self.game):
+    def show_probabilities(self):
+        """Ctrl+P: the full odds table, beside the board."""
+        self._show_side_view("odds")
+
+    def show_remaining_cards(self):
+        """Ctrl+L: how many of each rank are left, beside the board."""
+        self._show_side_view("cards")
+
+    def update_side_view(self, odds=None):
+        """Fill only the side view that is showing (the odds table or the
+        cards left); the hidden one is filled when it is switched to."""
+        if self.game is None or not self.odds_var.get() or self.mode != "play":
+            return
+        view = self.side_view.get()
+        if view == "odds":
+            self.update_probabilities(odds)
+        elif view == "cards":
+            self.update_remaining_cards()
+        self.side_scroll.update_layout()
+
+    def update_probabilities(self, odds_all=None):
+        if not self.game:
             return
         tree = self.prob_tree
         tree.delete(*tree.get_children())
-        for i, (card, odds) in enumerate(zip(self.game.box, self.game.odds_all())):
+        blanks = len(CALL_ORDER) + 2
+        for i, (card, odds) in enumerate(zip(self.game.box, odds_all or self.game.odds_all())):
             box = POSITION_LABELS[i]
             if card is None:
-                tree.insert("", "end", values=(box, "Failed", *[""] * 6))
+                tree.insert("", "end", values=(box, "Failed", *[""] * blanks))
             elif odds is None:
-                tree.insert("", "end", values=(box, card, *["-"] * 6))
+                tree.insert("", "end", values=(box, card, *["-"] * blanks))
             else:
-                best_call, best_p = odds.best_plain()
+                if card.is_joker:
+                    best = "Sure win"
+                else:
+                    call, chance = odds.best_plain()
+                    best = f"{CALL_ARROWS[call]} {_percent(chance)}"
                 tree.insert("", "end", values=(
-                    box, card, *(_percent(odds.for_call(c)) for c in CALLS),
-                    _percent(odds.exact), f"{CALL_LABELS[best_call]} {_percent(best_p)}"))
-
-    def show_remaining_cards(self):
-        if not self._need_game():
-            return
-        if self.cards_window and self.cards_window.winfo_exists():
-            self.cards_window.lift()
-            return
-        self.cards_window = _themed_toplevel(self.root, "Remaining Cards")
-        self._windows.append(self.cards_window)
-        self.cards_text = tk.Text(self.cards_window, width=28, height=20,
-                                  font=font("mono", 11), padx=10, pady=8)
-        themes.style_text_widget(self.cards_text, self.theme)
-        self._text_widgets.append(self.cards_text)
-        self.cards_text.pack(fill="both", expand=True, padx=10, pady=10)
-        ttk.Button(self.cards_window, text="Close",
-                   command=self.cards_window.destroy).pack(pady=(0, 10))
-        self.update_remaining_cards()
+                    box, card, *(_percent(odds.for_call(c)) for c in CALL_ORDER),
+                    _percent(odds.exact), best))
 
     def update_remaining_cards(self):
-        if not (self.cards_window and self.cards_window.winfo_exists() and self.game):
+        if not self.game:
             return
         remaining = self.game.remaining_by_rank()
         lines = ["Cards left in the draw pile:", ""]
@@ -835,37 +1064,34 @@ class PlayerGUI:
         self.cards_text.insert("1.0", "\n".join(lines))
         self.cards_text.config(state="disabled")
 
-    def _text_window(self, title: str, body: str, size: str = "660x720"):
-        win = _themed_toplevel(self.root, title)
+    def _help(self, page: str, title: str, body: str):
+        """Help opens as a page of the app; on its own, in a plain window."""
+        if self.app is not None:
+            return self.app.show_page(page)
+        win = tk.Toplevel(self.root)
+        win.title(title)
+        win.geometry("660x620")
+        themes.paint_window(win, self.theme)
         self._windows.append(win)
-        win.geometry(size)
-        frame = ttk.Frame(win, padding=10)
-        frame.pack(fill="both", expand=True)
-        scrollbar = ttk.Scrollbar(frame)
-        scrollbar.pack(side="right", fill="y")
-        widget = tk.Text(frame, wrap="word", yscrollcommand=scrollbar.set,
-                         font=font("mono", 10), padx=12, pady=10)
+        widget = tk.Text(win, wrap="word", font=font("mono", 10), padx=12, pady=10)
         themes.style_text_widget(widget, self.theme)
         self._text_widgets.append(widget)
-        widget.pack(side="left", fill="both", expand=True)
-        scrollbar.config(command=widget.yview)
+        widget.pack(fill="both", expand=True, padx=10, pady=10)
         widget.insert("1.0", body)
         widget.config(state="disabled")
-        ttk.Button(win, text="Close", command=win.destroy).pack(pady=(0, 10))
         return win
 
     def show_rules(self):
-        return self._text_window("How to Play", text.RULES_SUMMARY)
+        return self._help("rules", "How to Play", text.RULES_SUMMARY)
 
     def show_strategy(self):
-        return self._text_window("Strategy Guide", text.STRATEGY_GUIDE)
+        return self._help("strategy", "Strategy Guide", text.STRATEGY_GUIDE)
 
     def show_keyboard_help(self):
-        return self._text_window("Keyboard Shortcuts", text.shortcut_help(), "480x380")
+        return self._help("shortcuts", "Keyboard Shortcuts", text.shortcut_help())
 
     def show_about(self):
-        return self._text_window(f"About the {self.HEADING}", text.TOOL_HELP[self.TOOL],
-                                 "640x520")
+        return self._help("guide", f"About the {self.HEADING}", text.TOOL_HELP[self.TOOL])
 
 
 # --------------------------------------------------------------------------- #
@@ -883,22 +1109,24 @@ class AssistantGUI(PlayerGUI):
     HEADING = "Game Assistant"
     TOOL = "assistant"
     START_MESSAGE = "Box set! Pick the card you flipped, select a box, and call."
+    HISTORY_ROWS = 2
+    SIDE_WIDTH = (340, 580)
 
-    HISTORY_ROWS = 3
-
-    def build_side_extra(self, side: ttk.Frame):
-        frame = ttk.Frame(side, style="Panel.TFrame", padding=(12, 8))
-        frame.pack(fill="x", pady=(10, 0))
-        ttk.Label(frame, text="Card you flipped: click it, then pick a box and call",
-                  style="PanelHeading.TLabel").pack(anchor="w", pady=(0, 6))
+    def build_side_extra(self, side: ttk.Frame) -> ttk.Frame:
+        frame = ttk.Frame(side, style="Panel.TFrame", padding=(12, 6))
+        ttk.Label(frame, text="Card you flipped", style="PanelHeading.TLabel").pack(
+            anchor="w", pady=(0, 3))
         self.drawn_var = tk.StringVar()
         self.flip_label_var = tk.StringVar(value="Flipped: none picked")
         self.flip_grid = CardGrid(frame, self.theme, self._flip_picked, jokers=1,
                                   style="Panel.TFrame")
         self.flip_grid.pack(anchor="w")
-        ttk.Label(frame, textvariable=self.flip_label_var, style="Panel.TLabel",
-                  font=font("ui", 12, "bold")).pack(anchor="w", pady=(6, 0))
+        # "Flipped: 7♠" sits in the joker row, beside the joker button.
+        self.flip_label = ttk.Label(self.flip_grid, textvariable=self.flip_label_var,
+                                    style="Panel.TLabel", font=font("ui", 12, "bold"))
+        self.flip_grid.beside_jokers(self.flip_label)
         self.drawn_var.trace_add("write", lambda *_: self._show_flip())
+        return frame
 
     def _flip_picked(self, card: Card, _button):
         self.drawn_var.set(card.label())
@@ -925,32 +1153,51 @@ class AssistantGUI(PlayerGUI):
         self.flip_grid.set_theme(theme)
         super().on_theme(theme)
 
-    def ask_box_cards(self, jokers: int) -> Optional[List[Card]]:
-        def preview(picked: List[Card]):
-            for i, view in enumerate(self.box_views):
-                if i < len(picked):
-                    view.show(picked[i], "live", footer_left=POSITION_LABELS[i])
-                else:
-                    view.show(None, "empty", footer_left=POSITION_LABELS[i])
-        picker = CardPickerDialog(self.root, jokers, on_pick=preview)
-        self.root.wait_window(picker.dialog)
-        if picker.result is None:
-            self.refresh()  # cancelled: put the old board back
-        return picker.result
-
-    def create_game(self, settings: GameSettings, box: Optional[List[Card]] = None):
-        box = box or self.ask_box_cards(settings.jokers)
-        if box is None:
-            return None
-        return Game.from_box(box, settings.jokers, settings.inclusive_calls)
+    # ----- dealing the box ------------------------------------------------ #
 
     def new_game(self, settings: Optional[GameSettings] = None,
                  box: Optional[List[Card]] = None) -> bool:
+        """No settings: show New Game. Settings but no box: pick the nine
+        box cards beside the board. Both: start the game."""
+        if settings is None:
+            self.show_setup()
+            return False
         if box is None:
-            return super().new_game(settings)
-        settings = settings or GameSettings()
-        self.start(settings, self.create_game(settings, box), self.START_MESSAGE)
+            self.show_picker(settings)
+            return False
+        self.start(settings, Game.from_box(box, settings.jokers, settings.inclusive_calls),
+                   self.START_MESSAGE)
         return True
+
+    def show_picker(self, settings: GameSettings):
+        if self.picker_panel is not None:
+            self.picker_panel.frame.destroy()
+        self.picker_panel = CardPickerPanel(
+            self.side, self.theme, settings.jokers, self._preview,
+            lambda box: self.new_game(settings, box=box), self.cancel_pick)
+        self.mode = "pick"
+        self.layout_side()
+        self._preview([])
+        self.set_status("Click the nine cards in your box, top-left to bottom-right.")
+        self.refresh()
+
+    def _preview(self, picked: List[Card]):
+        for i, view in enumerate(self.box_views):
+            if i < len(picked):
+                view.show(picked[i], "live", footer_left=POSITION_LABELS[i])
+            else:
+                view.show(None, "empty", footer_left=POSITION_LABELS[i])
+
+    def cancel_pick(self):
+        self.mode = "play"
+        self.layout_side()
+        self.set_status("Select a box and make your call." if self.game else self.WELCOME)
+        self.refresh()   # put the old board back
+
+    def create_game(self, settings: GameSettings, box: Optional[List[Card]] = None):
+        if box is None:
+            return None
+        return Game.from_box(box, settings.jokers, settings.inclusive_calls)
 
     def drawn_card(self):
         label = self.drawn_var.get()

@@ -4,9 +4,16 @@ GUI SMOKE TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_gui.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Last Tested: 2026-10-20 (pytest: 254 passed)
+
+VERSION 1.2 CHANGES (2026-10-20):
+- The Assistant's nine-card picker is checked on the page, and bad input
+  in the Simulator and Optimizer must show a message on the page, never a
+  dialog.
+- The odds table is checked in button order (▲, ▲=, ▼, ▼=) with its Best
+  column.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - Checks the new widgets instead of button text and colours: box_views
@@ -111,7 +118,9 @@ def test_probability_window_tracks_the_game(tk_root, window, no_dialogs):
     gui.game = game(["8", "🃏"], ["2", "9", "Q", "A"])
     gui.show_probabilities()
     rows = [gui.prob_tree.item(i, "values") for i in gui.prob_tree.get_children()]
-    assert rows[0][2:4] == ("75.0%", "25.0%") and rows[1][2] == "100.0%"
+    # Columns follow the buttons: box, card, ▲, ▲=, ▼, ▼=, tie, best plain call.
+    assert rows[0][2:6] == ("75.0%", "75.0%", "25.0%", "25.0%")
+    assert rows[0][7] == "▲ 75.0%" and rows[1][2] == "100.0%" and rows[1][7] == "Sure win"
     gui.box_clicked(0)
     gui.make_call(HIGHER)              # draws the 2: box 0 fails
     rows = [gui.prob_tree.item(i, "values") for i in gui.prob_tree.get_children()]
@@ -128,35 +137,25 @@ def test_new_game_with_real_deck(tk_root, window, no_dialogs):
         getattr(gui, name)()
 
 
-def test_assistant_card_picker(tk_root, window, no_dialogs, monkeypatch):
+def test_assistant_card_picker(tk_root, window, no_dialogs):
     from btb import gui_game
     gui = gui_game.AssistantGUI(window)
-    picked = {}
-
-    def fake_wait(dialog_window):
-        # Click both jokers, then seven more cards.
-        picker = picked["picker"]
-        buttons = picker.grid.buttons
-        jokers = [b for c, b in buttons if c.is_joker]
-        assert len(jokers) == 2
-        jokers[0].invoke()
-        assert jokers[0].cget("state") == "disabled" and jokers[1].cget("state") == "normal"
-        jokers[1].invoke()
-        for c, b in sorted(buttons, key=lambda cb: cb[0].rank):
-            if picker.result is not None:  # the ninth pick closed the dialog
-                break
-            if c.label() in ("2♠", "3♠", "4♠", "5♠", "6♠", "7♠", "8♠"):
-                b.invoke()
-
-    real_picker = gui_game.CardPickerDialog
-
-    def capture(*args, **kwargs):
-        picked["picker"] = real_picker(*args, **kwargs)
-        return picked["picker"]
-
-    monkeypatch.setattr(gui_game, "CardPickerDialog", capture)
-    monkeypatch.setattr(gui.root, "wait_window", fake_wait)
-    assert gui.new_game(gui_game.GameSettings(jokers=2, inclusive_calls=3))
+    assert gui.new_game(gui_game.GameSettings(jokers=2, inclusive_calls=3)) is False
+    picker = gui.picker_panel                       # beside the board, not a pop-up
+    assert gui.mode == "pick" and picker.frame.winfo_manager() == "pack"
+    buttons = picker.grid.buttons
+    jokers = [b for c, b in buttons if c.is_joker]
+    assert len(jokers) == 2
+    jokers[0].invoke()
+    assert jokers[0].cget("state") == "disabled" and jokers[1].cget("state") == "normal"
+    assert gui.box_views[0].describe() == "🃏"      # the board previews each pick
+    jokers[1].invoke()
+    for c, b in sorted(buttons, key=lambda cb: cb[0].rank):
+        if picker.result is not None:               # the ninth pick starts the game
+            break
+        if c.label() in ("2♠", "3♠", "4♠", "5♠", "6♠", "7♠", "8♠"):
+            b.invoke()
+    assert gui.mode == "play"
     assert [str(c) for c in gui.game.box] == ["🃏", "🃏", "2♠", "3♠", "4♠", "5♠",
                                               "6♠", "7♠", "8♠"]
     assert "🃏" not in gui.flip_choices() and gui.game.cards_left == 45
@@ -172,6 +171,18 @@ def test_assistant_card_picker(tk_root, window, no_dialogs, monkeypatch):
     k_hearts = next(b for c, b in gui.flip_grid.buttons if c.label() == "K♥")
     k_hearts.invoke()                              # clicking a card picks it
     assert gui.drawn_var.get() == "K♥"
+    assert no_dialogs == []
+
+
+def test_assistant_picker_cancel_puts_the_board_back(tk_root, window, no_dialogs):
+    from btb import gui_game
+    gui = gui_game.AssistantGUI(window)
+    gui.new_game(gui_game.GameSettings(), box=cards("5", "6", "7", "8", "9", "10", "J", "Q", "K"))
+    gui.new_game(gui_game.GameSettings(jokers=1))
+    next(b for c, b in gui.picker_panel.grid.buttons if c.label() == "A♠").invoke()
+    assert gui.box_views[0].describe() == "A♠"
+    gui.cancel_pick()
+    assert gui.mode == "play" and gui.box_views[0].describe() == "5♠"
 
 
 def test_simulator_runs_in_background_and_reaches_100(tk_root, window, no_dialogs):
@@ -212,7 +223,8 @@ def test_simulator_rejects_bad_input(tk_root, window, no_dialogs, field, value):
     gui = SimulatorGUI(window)
     getattr(gui, field).set(value)
     gui.start()
-    assert gui.task is None and no_dialogs[-1][0] == "showerror"
+    assert gui.task is None and gui.message_var.get() and no_dialogs == []
+    assert str(gui.message_label.cget("style")) == "Error.TLabel"
 
 
 def test_optimizer_runs_in_background_and_reaches_100(tk_root, window, no_dialogs):
@@ -254,7 +266,7 @@ def test_optimizer_rejects_bad_input(tk_root, window, no_dialogs, field, value):
     gui.vars["jokers_max"].set("1")
     gui.vars[field].set(value)
     gui.start()
-    assert gui.task is None and no_dialogs[-1][0] == "showerror"
+    assert gui.task is None and gui.message_var.get() and no_dialogs == []
 
 
 def test_launcher_opens_every_tool(tk_root, no_dialogs):

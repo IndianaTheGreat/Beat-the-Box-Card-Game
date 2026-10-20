@@ -61,8 +61,9 @@ The **Basic** count is easy to keep in your head with a real deck. The **Weighte
 
 - The bigger the number, the stronger the lean.
 - The count matters most for **middle cards** (`7`, `8`, `9`). A `2` or an `A` is a near-sure call whatever the count says.
-- The Game Player shows all three counts, each with ▼ or ▲ for the call it favours, and spells out the lean ("More LOW cards left: lean Lower").
-- **The counts can disagree.** After seeing an A, a 7 and a 6, the Basic count is −1 (lean Higher) but the Advanced count is +1 (lean Lower), because the Advanced count weighs the ace more. The Player then says "The counts disagree"; trust the odds (Ctrl+O) instead.
+- The Game Player shows all three counts (switch on **Show odds & counts**, Ctrl+O), each with ▼ or ▲ for the call it favours, and spells out the lean ("More LOW cards left: lean Lower").
+- **The counts can disagree.** After seeing an A, a 7 and a 6, the Basic count is −1 (lean Higher) but the Advanced count is +1 (lean Lower), because the Advanced count weighs the ace more. The Player then says "The counts disagree". Trust the Basic count, which is exact ([why](docs/CARD_COUNTING.md#-the-basic-count-is-exact)), or the odds under the cards.
+- **Basic is the one to learn.** A review of the three counts (and three others) found none that wins more, and Basic is the simplest. See [docs/CARD_COUNTING.md](docs/CARD_COUNTING.md).
 
 ---
 
@@ -129,9 +130,10 @@ Jokers are worth more the more inclusive calls you have, because each one is a g
 
 ## 🔍 Using the Odds
 
-- **Ctrl+O** shows the odds for Higher (▲) and Lower (▼) under every card. **Ctrl+P** shows the full table, including inclusive calls and the recovery chance.
+- **Ctrl+O** (**Show odds & counts**) shows the odds for Higher (▲) and Lower (▼) under every card, along with the card count and your plays. **Ctrl+P** shows the full table beside the board, including inclusive calls and the tie (recovery) chance.
 - **Pick the box whose best plain call has the highest odds.** Ties between boxes go to the more extreme card.
-- **The count is a quick way to estimate the same thing** when the odds are hidden, or when you play with a real deck and keep the count in your head.
+- **The count is a quick way to estimate the same thing** when the odds are hidden, or when you play with a real deck and keep the count in your head. Without inclusive calls it gets you almost all the way.
+- **With inclusive calls, also track how many of each box rank are left.** The count can't see ties coming; this habit can. [CARD_COUNTING.md](docs/CARD_COUNTING.md#%EF%B8%8F-what-the-count-cant-do-ties) shows what each habit is worth.
 - The **Game Assistant** gives exact odds for a real-deck game: it knows every card you have entered.
 
 ---

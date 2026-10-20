@@ -1,12 +1,30 @@
 """
 ==============================================
-SIMULATOR AND STRATEGY OPTIMIZER WINDOWS
+SIMULATOR AND STRATEGY OPTIMIZER PAGES
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/gui_sim.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Last Tested: 2026-10-20 (pytest: 254 passed)
+
+VERSION 1.2 CHANGES (2026-10-20):
+- Pages, not pop-ups: each tool builds inside the frame it is given (a
+  page of the one-window app). Advanced Statistics is a tab beside the
+  results; input errors, notices and failed runs show on the page; a very
+  large run asks for a second press of Run instead of a dialog; "Use Best
+  in Simulator" switches to the Simulator page. The menu bar is gone
+  (theme in Settings, help in the sidebar). Only the system Save dialog
+  for exports still opens a window.
+- Resizable: the results, chart and tables follow the window size. The
+  settings column is narrower and scrolls if the window is too short; the
+  Export and Use Best buttons sit under it, so the results get the full
+  height. Tables get a sideways scrollbar when the window is too narrow
+  for every column, and the Simulator's tiles go two by two.
+- The CPU cores choice is re-read whenever the page is shown, so a change
+  made in Settings (or on the other page) is never undone by a stale copy.
+- Clear also forgets a pending "press Run again" warning, and Use Best
+  won't overwrite a Simulator run that is still going.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - New look: settings and controls on the left, results on the right, in
@@ -38,14 +56,16 @@ VERSION 1.0 CHANGES (2026-10-20):
 
 DESCRIPTION:
 -----------
-Windows for btb.sim. The worker thread never touches Tk; it reports
-progress through a queue that the window polls. Big runs are spread over
-helper processes by btb.sim; this file only chooses how many.
+Pages for btb.sim. The worker thread never touches Tk; it reports
+progress through a queue that the page polls. Big runs are spread over
+helper processes by btb.sim; this file only chooses how many. Given a
+window of its own instead of a page, each tool also works on its own (the
+tests use that).
 
 DEPENDENCIES:
 ------------
 - btb.engine, btb.sim, btb.strategy, btb.system, btb.export, btb.theme,
-  btb.settings, btb.text, btb.widgets
+  btb.settings, btb.widgets
 - Standard library: tkinter, threading, queue, gc, time, dataclasses,
   pathlib, typing
 
@@ -53,16 +73,17 @@ KEY FUNCTIONS:
 -------------
 - BackgroundTask(root, work, on_progress, on_done, on_error) -> runs
   work(progress, should_stop) on a thread, reports on the Tk thread
-- SimulatorGUI -> one batch: tiles, chart, details, exports
-- OptimizerGUI -> parameter sweep: ranked table, confirm, exports
-- describe_batch / describe_sweep (+ _details) -> text for Advanced
-  Statistics
+- SimulatorGUI(parent, app) -> one batch: tiles, chart, details, exports
+- OptimizerGUI(parent, app) -> parameter sweep: ranked table, confirm,
+  exports, Use Best in Simulator
+- describe_batch / describe_sweep (+ _details) -> text for the Advanced tab
 
 ERROR HANDLING:
 --------------
-Invalid input shows an error dialog and nothing starts. An exception in
-the worker is reported in a dialog and the Run button comes back. Closing
-a window mid-run stops its worker. A failed export shows the reason.
+Invalid input shows a red message on the page and nothing starts. An
+exception in the worker is reported the same way and the Run button comes
+back. Closing a window mid-run stops its worker. A failed export shows
+the reason.
 
 NOTES:
 -----
@@ -83,12 +104,11 @@ import time
 import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, ttk
 from typing import Callable, Dict, List, Optional, Tuple
 
 from . import export as exporter
 from . import settings as app_settings
-from . import text
 from . import theme as themes
 from .engine import BOX_SIZE, MAX_JOKERS, max_inclusive_calls, new_seed
 from .sim import (
@@ -98,7 +118,9 @@ from .sim import (
 from .strategy import DEFAULT_THRESHOLD
 from .system import cpu_count, resolve_workers
 from .theme import Theme, font
-from .widgets import BarChart, StatTile, readable_on
+from .widgets import (
+    BarChart, ScrollFrame, StatTile, flow_row, readable_on, scrolled_tree, wrap_to,
+)
 
 POLL_MS = 50
 GC_EVERY_S = 1.0
@@ -244,7 +266,10 @@ def _plural(n: int, word: str) -> str:
 
 
 class _RunnerWindow:
-    """Shared plumbing: header, settings column, Run/Stop, progress, results."""
+    """Shared plumbing: header, settings column (Run/Stop, progress, an
+    inline message line, Export buttons), and a results area with tabs."""
+
+    WRAP = 270          # text width in the settings column
 
     TITLE = ""
     HEADING = ""
@@ -252,33 +277,38 @@ class _RunnerWindow:
     TOOL = ""
     RUN_LABEL = "Run"
 
-    def __init__(self, root: tk.Misc):
-        self.root = root
-        self.root.title(self.TITLE)
-        self.theme: Theme = themes.use(root)
+    def __init__(self, parent: tk.Misc, app=None):
+        self.app = app
+        self.root = parent.winfo_toplevel()
+        self.standalone = parent is self.root
+        if self.standalone:
+            self.root.title(self.TITLE)
+        self.theme: Theme = themes.use(self.root)
         self.task: Optional[BackgroundTask] = None
         self.outcome: Optional[RunOutcome] = None
         self._started = 0.0
+        self._pending_large: Optional[tuple] = None
         self._text_widgets: List[tk.Misc] = []
-        self._windows: List[tk.Misc] = []
-        self.theme_var = tk.StringVar(value=self.theme.name)
         self.cores_var = tk.StringVar(value=_cores_label(app_settings.get("cpu_workers")))
-        self._build_menu()
+        self.message_var = tk.StringVar(value="")
 
-        self.main = ttk.Frame(self.root, padding=14)
-        self.main.grid(row=0, column=0, sticky="nsew")
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
-        self.main.columnconfigure(1, weight=1)
-        self.main.rowconfigure(1, weight=1)
+        self.frame = ttk.Frame(parent, padding=14)
+        self.frame.grid(row=0, column=0, sticky="nsew")
+        parent.rowconfigure(0, weight=1)
+        parent.columnconfigure(0, weight=1)
+        self.main = self.frame
+        self.frame.columnconfigure(1, weight=1)
+        self.frame.rowconfigure(1, weight=1)
 
-        header = ttk.Frame(self.main)
+        header = ttk.Frame(self.frame)
         header.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
         ttk.Label(header, text=self.HEADING, style="Heading.TLabel").pack(anchor="w")
         ttk.Label(header, text=self.SUBTITLE, style="Muted.TLabel").pack(anchor="w")
 
-        left = ttk.Frame(self.main)
-        left.grid(row=1, column=0, sticky="nsw", padx=(0, 16))
+        # The settings column scrolls if the window is too short for it.
+        self.left_scroll = ScrollFrame(self.frame)
+        self.left_scroll.grid(row=1, column=0, sticky="ns", padx=(0, 16))
+        left = self.left_scroll.body
         form = ttk.LabelFrame(left, text="Settings", padding=10)
         form.pack(fill="x")
         self.build_inputs(form)
@@ -290,88 +320,139 @@ class _RunnerWindow:
                              values=["Auto"] + [str(n) for n in range(1, cpu_count() + 1)])
         cores.grid(row=0, column=1, sticky="w", padx=(8, 0))
         cores.bind("<<ComboboxSelected>>", self._save_cores)
-        ttk.Label(speed, text="Auto checks what is free at the start of each run\n"
-                  "and always leaves a core for you.", style="Muted.TLabel").grid(
-            row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        ttk.Label(speed, text="Auto checks what is free at the start of each run and "
+                  "always leaves a core for you.", style="Muted.TLabel",
+                  wraplength=self.WRAP).grid(row=1, column=0, columnspan=2, sticky="w",
+                                             pady=(4, 0))
 
         buttons = ttk.Frame(left)
         buttons.pack(fill="x", pady=(12, 0))
         self.run_button = ttk.Button(buttons, text=self.RUN_LABEL, style="Accent.TButton",
                                      command=self.start)
         self.run_button.pack(side="left")
-        self.stop_button = ttk.Button(buttons, text="Stop", command=self.stop, state="disabled")
+        # width=-6: at least 6 characters wide (ttk's default minimum is 11)
+        self.stop_button = ttk.Button(buttons, text="Stop", command=self.stop, state="disabled",
+                                      width=-6)
         self.stop_button.pack(side="left", padx=6)
-        ttk.Button(buttons, text="Clear", command=self.clear).pack(side="left")
+        ttk.Button(buttons, text="Clear", command=self.clear, width=-6).pack(side="left")
 
         self.progress_var = tk.DoubleVar(value=0)
         ttk.Progressbar(left, variable=self.progress_var, maximum=100).pack(
             fill="x", pady=(12, 4))
         self.progress_label = ttk.Label(left, text="Ready", style="Muted.TLabel",
-                                        wraplength=300)
+                                        wraplength=self.WRAP)
         self.progress_label.pack(anchor="w")
+        # Errors and notices show here, on the page (no pop-ups), just under
+        # the progress line (packed only while there is a message).
+        self.message_label = ttk.Label(left, textvariable=self.message_var,
+                                       style="Error.TLabel", wraplength=self.WRAP)
 
-        self.results = ttk.Frame(self.main)
-        self.results.grid(row=1, column=1, sticky="nsew")
-        self.build_results(self.results)
-
-        actions = ttk.Frame(self.main)
-        actions.grid(row=2, column=1, sticky="e", pady=(10, 0))
+        # Export (and Use Best) live under the settings, so the results get
+        # the whole height of the page.
+        actions = ttk.Frame(left)
+        actions.pack(fill="x", pady=(14, 0))
         self.build_actions(actions)
-        self.stats_button = ttk.Button(actions, text="Advanced Statistics",
-                                       command=self.show_advanced_stats)
-        self.stats_button.pack(side="left", padx=(6, 0))
-        ttk.Button(actions, text="Export CSV...", command=lambda: self.export("csv")).pack(
-            side="left", padx=(6, 0))
-        ttk.Button(actions, text="Export JSON...", command=lambda: self.export("json")).pack(
-            side="left", padx=(6, 0))
+        exports = ttk.Frame(actions)
+        exports.pack(anchor="w")
+        self.export_buttons = [
+            ttk.Button(exports, text="Export CSV...", command=lambda: self.export("csv")),
+            ttk.Button(exports, text="Export JSON...", command=lambda: self.export("json"))]
+        self.export_buttons[0].pack(side="left")
+        self.export_buttons[1].pack(side="left", padx=(6, 0))
 
-        self.root.protocol("WM_DELETE_WINDOW", self.close)
-        themes.subscribe(self.root, self.on_theme)
+        self.notebook = ttk.Notebook(self.frame)
+        self.notebook.grid(row=1, column=1, sticky="nsew")
+        self.build_results(self.notebook)
+        self.advanced_tab = ttk.Frame(self.notebook, padding=8)
+        holder = ttk.Frame(self.advanced_tab)
+        holder.pack(fill="both", expand=True)
+        scroll = ttk.Scrollbar(holder)
+        scroll.pack(side="right", fill="y")
+        self.advanced_text = tk.Text(holder, wrap="word", font=font("mono", 10), padx=12,
+                                     pady=10, yscrollcommand=scroll.set, height=10)
+        self.advanced_text.pack(side="left", fill="both", expand=True)
+        scroll.config(command=self.advanced_text.yview)
+        themes.style_text_widget(self.advanced_text, self.theme)
+        self._text_widgets.append(self.advanced_text)
+        self.notebook.add(self.advanced_tab, text="Advanced")
+        self.set_advanced("Run something first: the full statistics appear here.")
+
+        left.update_idletasks()
+        self.left_scroll.set_width(left.winfo_reqwidth())
+        if self.standalone:
+            self.root.protocol("WM_DELETE_WINDOW", self.close)
+        themes.subscribe(self.frame, self.on_theme)
 
     # ----- subclass hooks ------------------------------------------------- #
     def build_inputs(self, form: ttk.Frame): ...
-    def build_results(self, frame: ttk.Frame): ...
+    def build_results(self, notebook: ttk.Notebook): ...
     def build_actions(self, frame: ttk.Frame): ...
     def make_work(self) -> Optional[Callable]: ...
     def show_results(self, result): ...
     def reset_results(self): ...
-    def show_advanced_stats(self): ...
+    def advanced_report(self) -> Optional[str]: ...
     def export_target(self): ...
     def export_name(self) -> str: ...
 
-    # ----- menu, theme, settings ------------------------------------------ #
-
-    def _build_menu(self):
-        bar = tk.Menu(self.root)
-        view = tk.Menu(bar, tearoff=0)
-        theme_menu = tk.Menu(view, tearoff=0)
-        for number, name in enumerate(themes.theme_names(), start=1):
-            theme_menu.add_radiobutton(label=f"{number}. {name}", value=name,
-                                       variable=self.theme_var,
-                                       command=lambda n=name: themes.set_theme(n, self.root))
-        view.add_cascade(label="Theme", menu=theme_menu)
-        bar.add_cascade(label="View", menu=view)
-        help_menu = tk.Menu(bar, tearoff=0)
-        help_menu.add_command(label="About This Tool", command=lambda: self.text_window(
-            f"About the {self.HEADING}", text.TOOL_HELP[self.TOOL]))
-        help_menu.add_command(label="Strategy Guide", command=lambda: self.text_window(
-            "Strategy Guide", text.STRATEGY_GUIDE))
-        bar.add_cascade(label="Help", menu=help_menu)
-        self.root.config(menu=bar)
+    # ----- theme, settings, messages -------------------------------------- #
 
     def on_theme(self, theme: Theme):
         self.theme = theme
-        self.theme_var.set(theme.name)
-        themes.paint_window(self.root, theme)
-        themes.repaint(self._text_widgets, self._windows, theme)
+        if self.standalone:
+            themes.paint_window(self.root, theme)
+        themes.repaint(self._text_widgets, [], theme)
+
+    def on_show(self):
+        """Called by the app each time this page is shown: pick up the CPU
+        cores choice in case it was changed in Settings or on the other page."""
+        if not (self.task and self.task.running):
+            self.cores_var.set(_cores_label(app_settings.get("cpu_workers")))
 
     def _save_cores(self, _event=None):
         app_settings.update(cpu_workers=_cores_setting(self.cores_var.get()))
 
-    # ----- running -------------------------------------------------------- #
-
     def error(self, message: str):
-        messagebox.showerror("Invalid input", message, parent=self.root)
+        """Show a problem on the page, in red, under the progress line."""
+        self.message_label.configure(style="Error.TLabel")
+        self.message_var.set(message)
+        self.message_label.pack(anchor="w", fill="x", pady=(8, 0), after=self.progress_label)
+        self.left_scroll.update_layout()
+
+    def notice(self, message: str):
+        self.message_label.configure(style="Notice.TLabel")
+        self.message_var.set(message)
+        self.message_label.pack(anchor="w", fill="x", pady=(8, 0), after=self.progress_label)
+        self.left_scroll.update_layout()
+
+    def clear_message(self):
+        self.message_var.set("")
+        self.message_label.pack_forget()
+        self.left_scroll.update_layout()
+
+    def confirm_large(self, total: int, signature: tuple) -> bool:
+        """Big runs need a second press of Run (instead of a pop-up question)."""
+        if total <= LARGE_RUN_GAMES or self._pending_large == signature:
+            self._pending_large = None
+            return True
+        self._pending_large = signature
+        self.notice(f"This will play {total:,} games and may take a while. Press "
+                    f"{self.RUN_LABEL} again to start; Stop works at any time.")
+        return False
+
+    def set_advanced(self, body: str):
+        self.advanced_text.config(state="normal")
+        self.advanced_text.delete("1.0", "end")
+        self.advanced_text.insert("1.0", body)
+        self.advanced_text.config(state="disabled")
+
+    def show_advanced_stats(self):
+        """Open the Advanced tab (it fills in after every run)."""
+        if self.advanced_report() is None:
+            self.notice("Run something first: Advanced shows the full statistics.")
+            return
+        self.notebook.select(self.advanced_tab)
+
+    # ----- running -------------------------------------------------------- #
 
     def start(self):
         if self.task and self.task.running:
@@ -393,7 +474,7 @@ class _RunnerWindow:
             result = work(progress, should_stop, workers)
             return RunOutcome(result, workers, time.perf_counter() - started)
 
-        self.task = BackgroundTask(self.root, job, self.on_progress,
+        self.task = BackgroundTask(self.frame, job, self.on_progress,
                                    self.on_done, self.on_error)
 
     def stop(self):
@@ -406,9 +487,12 @@ class _RunnerWindow:
         self.root.destroy()
 
     def clear(self):
+        self._pending_large = None          # a "press Run again" warning is forgotten too
         self.progress_var.set(0)
         self.progress_label.config(text="Ready")
+        self.clear_message()
         self.reset_results()
+        self.set_advanced("Run something first: the full statistics appear here.")
 
     def on_progress(self, done: int, total: int):
         pct = 100.0 * done / total if total else 100.0
@@ -436,6 +520,9 @@ class _RunnerWindow:
             self.progress_var.set(100)
             self.progress_label.config(text=f"100% complete. {summary}")
         self.show_results(result)
+        report = self.advanced_report()
+        if report:
+            self.set_advanced(report)
 
     def games_played(self, result) -> int:
         return getattr(result, "games", 0)
@@ -443,14 +530,14 @@ class _RunnerWindow:
     def on_error(self, exc: BaseException):
         self._finish()
         self.progress_label.config(text="Failed")
-        messagebox.showerror("Error", f"The run failed: {exc}", parent=self.root)
+        self.error(f"The run failed: {exc}")
 
     # ----- output --------------------------------------------------------- #
 
     def export(self, kind: str):
         target = self.export_target()
         if target is None:
-            messagebox.showinfo("Nothing to export", "Run something first.", parent=self.root)
+            self.notice("Nothing to export yet: run something first.")
             return
         path = filedialog.asksaveasfilename(
             parent=self.root, title=f"Export {kind.upper()}", defaultextension=f".{kind}",
@@ -461,50 +548,19 @@ class _RunnerWindow:
         try:
             saved = exporter.export(target, path)
         except (OSError, ValueError) as exc:
-            messagebox.showerror("Export failed", str(exc), parent=self.root)
+            self.error(f"Export failed: {exc}")
             return
+        self.clear_message()
         self.progress_label.config(text=f"Saved {Path(saved).name}")
-
-    def text_window(self, title: str, body: str):
-        win = tk.Toplevel(self.root)
-        win.title(title)
-        win.geometry("660x720")
-        themes.paint_window(win, self.theme)
-        self._windows.append(win)
-        frame = ttk.Frame(win, padding=10)
-        frame.pack(fill="both", expand=True)
-        scrollbar = ttk.Scrollbar(frame)
-        scrollbar.pack(side="right", fill="y")
-        widget = tk.Text(frame, wrap="word", yscrollcommand=scrollbar.set,
-                         font=font("mono", 10), padx=12, pady=10)
-        themes.style_text_widget(widget, self.theme)
-        self._text_widgets.append(widget)
-        widget.pack(side="left", fill="both", expand=True)
-        scrollbar.config(command=widget.yview)
-        widget.insert("1.0", body)
-        widget.config(state="disabled")
-        ttk.Button(win, text="Close", command=win.destroy).pack(pady=(0, 10))
-        return win
 
     def make_tree(self, parent: tk.Misc, columns: Dict[str, Tuple[str, int, str]],
                   height: int, pady=0) -> ttk.Treeview:
-        """A Treeview with a scrollbar. columns: id -> (heading, width, anchor)."""
-        holder = ttk.Frame(parent)
+        """A table with scrollbars (sideways only when the window is too narrow).
+        columns: id -> (heading, width, anchor)."""
+        holder, tree = scrolled_tree(parent, columns, height)
         holder.pack(fill="both", expand=True, pady=pady)
-        tree = ttk.Treeview(holder, columns=list(columns), show="headings", height=height)
-        for col, (heading, width, anchor) in columns.items():
-            tree.heading(col, text=heading)
-            tree.column(col, width=width, anchor=anchor, stretch=True)
-        scroll = ttk.Scrollbar(holder, command=tree.yview)
-        tree.configure(yscrollcommand=scroll.set)
-        tree.pack(side="left", fill="both", expand=True)
-        scroll.pack(side="right", fill="y")
         return tree
 
-
-# --------------------------------------------------------------------------- #
-# Text for Advanced Statistics
-# --------------------------------------------------------------------------- #
 
 def _margin_text(r: BatchResult) -> str:
     low, high = r.margin
@@ -671,9 +727,9 @@ class SimulatorGUI(_RunnerWindow):
         for r, (label, widget) in enumerate(rows):
             ttk.Label(form, text=label).grid(row=r, column=0, sticky="w", pady=3)
             widget.grid(row=r, column=1, sticky="w", pady=3, padx=(8, 0))
-        ttk.Label(form, text="Threshold: only spend an inclusive call when it\n"
-                  "adds at least this many points of win chance.",
-                  style="Muted.TLabel").grid(row=len(rows), column=0, columnspan=2,
+        ttk.Label(form, text="Threshold: only spend an inclusive call when it adds at least "
+                  "this many points of win chance.", style="Muted.TLabel",
+                  wraplength=self.WRAP).grid(row=len(rows), column=0, columnspan=2,
                                              sticky="w", pady=(6, 0))
         self.jokers_var.trace_add("write", self._update_calls)
         self._update_calls()
@@ -681,26 +737,43 @@ class SimulatorGUI(_RunnerWindow):
     def _update_calls(self, *_):
         self.calls_combo["values"] = list(range(max_inclusive_calls(int(self.jokers_var.get())) + 1))
 
-    def build_results(self, frame):
+    def build_results(self, notebook):
+        frame = ttk.Frame(notebook, padding=8)
+        notebook.add(frame, text="Overview")
         self.win_var = tk.StringVar(value="-")
         self.games_var = tk.StringVar(value="-")
         self.boxes_var = tk.StringVar(value="-")
         self.plays_var = tk.StringVar(value="-")
-        tiles = ttk.Frame(frame)
+        self.tiles_frame = tiles = ttk.Frame(frame)
         tiles.pack(fill="x")
-        for col, (caption, var) in enumerate((("Win rate (± 95% range)", self.win_var),
-                                              ("Games played", self.games_var),
-                                              ("Avg boxes left in wins", self.boxes_var),
-                                              ("Avg plays per game", self.plays_var))):
-            StatTile(tiles, caption, var).grid(row=0, column=col, sticky="ew",
-                                               padx=(0 if col == 0 else 6, 0))
-            tiles.columnconfigure(col, weight=1)
-        self.chart = BarChart(frame, self.theme, width=520, height=180,
+        self.tiles = [StatTile(tiles, caption, var) for caption, var in (
+            ("Win rate (± 95% range)", self.win_var), ("Games played", self.games_var),
+            ("Avg boxes left in wins", self.boxes_var), ("Avg plays per game", self.plays_var))]
+        self._tile_columns = 0
+        tiles.bind("<Configure>", self._arrange_tiles)
+        self._arrange_tiles()
+        self.chart = BarChart(frame, self.theme, width=520, height=170,
                               title="Boxes left in winning games (% of wins)")
-        self.chart.pack(fill="x", pady=(10, 0))
+        self.chart.pack(fill="both", expand=True, pady=(10, 0))
         self.details_tree = self.make_tree(
-            frame, {"stat": ("Statistic", 230, "w"), "value": ("Value", 260, "w")},
-            height=10, pady=(10, 0))
+            frame, {"stat": ("Statistic", 210, "w"), "value": ("Value", 220, "w")},
+            height=8, pady=(10, 0))
+
+    def _arrange_tiles(self, _event=None):
+        """Four tiles in a row when there is room, otherwise two by two."""
+        width = self.tiles_frame.winfo_width()
+        columns = 2 if 1 < width < 600 else 4
+        if columns == self._tile_columns:
+            return
+        self._tile_columns = columns
+        for col in range(4):
+            self.tiles_frame.columnconfigure(col, weight=0, uniform="")
+        for i, tile in enumerate(self.tiles):
+            row, col = divmod(i, columns)
+            tile.grid(row=row, column=col, sticky="ew", padx=(0 if col == 0 else 6, 0),
+                      pady=(0 if row == 0 else 6, 0))
+        for col in range(columns):
+            self.tiles_frame.columnconfigure(col, weight=1, uniform="tiles")
 
     def reset_results(self):
         self.result = None
@@ -733,9 +806,7 @@ class SimulatorGUI(_RunnerWindow):
         if not 0 <= threshold <= 100:
             self.error("The threshold must be between 0 and 100.")
             return None
-        if games > LARGE_RUN_GAMES and not messagebox.askyesno(
-                "Large run", f"This will play {games:,} games and may take a while. "
-                "You can stop it at any time. Continue?", parent=self.root):
+        if not self.confirm_large(games, (games, jokers, calls, threshold)):
             return None
         self.seed = seed
         return lambda progress, stop, workers: run_batch(
@@ -772,12 +843,11 @@ class SimulatorGUI(_RunnerWindow):
         for stat, value in rows:
             self.details_tree.insert("", "end", values=(stat, value))
 
-    def show_advanced_stats(self):
+    def advanced_report(self) -> Optional[str]:
         if not self.result or not self.result.games:
-            messagebox.showinfo("No data", "Run some simulations first.", parent=self.root)
-            return
-        self.text_window("Advanced Statistics", describe_batch(self.result, self.seed)
-                         + "\n\n" + describe_batch_details(self.result, self.seed))
+            return None
+        return (describe_batch(self.result, self.seed) + "\n\n"
+                + describe_batch_details(self.result, self.seed))
 
     def export_target(self):
         return self.result if self.result and self.result.games else None
@@ -802,10 +872,10 @@ class OptimizerGUI(_RunnerWindow):
     RUN_LABEL = "Run Optimization"
 
     TABLE_COLUMNS = {
-        "rank": ("#", 40, "center"), "win": ("Win %", 70, "e"), "margin": ("±", 56, "e"),
-        "jokers": ("Jokers", 60, "center"), "calls": ("Calls", 56, "center"),
-        "threshold": ("Threshold", 76, "center"), "boxes": ("Boxes left", 80, "e"),
-        "games": ("Games", 72, "e"), "note": ("", 120, "w"),
+        "rank": ("#", 28, "center"), "win": ("Win %", 60, "e"), "margin": ("±", 40, "e"),
+        "jokers": ("Jokers", 58, "center"), "calls": ("Calls", 48, "center"),
+        "threshold": ("Threshold", 88, "center"), "boxes": ("Boxes left", 90, "e"),
+        "games": ("Games", 62, "e"), "note": ("", 126, "w"),
     }
 
     def build_inputs(self, form):
@@ -837,36 +907,44 @@ class OptimizerGUI(_RunnerWindow):
         ttk.Label(form, text="Seed (blank = random):").grid(row=5, column=0, sticky="w", pady=3)
         ttk.Entry(form, textvariable=self.vars["seed"], width=10).grid(
             row=5, column=1, sticky="w", padx=(8, 0))
-        ttk.Checkbutton(form, text="Confirm top 10 (5x more games on fresh deals)",
-                        variable=self.confirm_var).grid(row=6, column=0, columnspan=2,
-                                                        sticky="w", pady=(6, 0))
+        ttk.Checkbutton(form, text="Confirm top 10", variable=self.confirm_var).grid(
+            row=6, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Label(form, text="Re-runs the ten best with 5x more games on fresh deals.",
+                  style="Muted.TLabel", wraplength=self.WRAP).grid(
+            row=7, column=0, columnspan=2, sticky="w")
 
-    def build_results(self, frame):
+    def build_results(self, notebook):
+        frame = ttk.Frame(notebook, padding=8)
+        notebook.add(frame, text="Results")
         self.best_var = tk.StringVar(value="-")
         self.best_settings_var = tk.StringVar(value="-")
         self.configs_var = tk.StringVar(value="-")
         self.total_var = tk.StringVar(value="-")
         tiles = ttk.Frame(frame)
         tiles.pack(fill="x")
-        for col, (caption, var) in enumerate((("Best win rate (± 95%)", self.best_var),
-                                              ("Best settings", self.best_settings_var),
-                                              ("Configurations tested", self.configs_var),
-                                              ("Games played", self.total_var))):
-            StatTile(tiles, caption, var).grid(row=0, column=col, sticky="ew",
-                                               padx=(0 if col == 0 else 6, 0))
-            tiles.columnconfigure(col, weight=1)
+        for i, (caption, var) in enumerate((("Best win rate (± 95%)", self.best_var),
+                                            ("Best settings", self.best_settings_var),
+                                            ("Configurations tested", self.configs_var),
+                                            ("Games played", self.total_var))):
+            row, col = divmod(i, 2)
+            StatTile(tiles, caption, var).grid(row=row, column=col, sticky="ew",
+                                               padx=(0 if col == 0 else 6, 0),
+                                               pady=(0 if row == 0 else 6, 0))
+            tiles.columnconfigure(col, weight=1, uniform="tiles")
 
         view = ttk.Frame(frame)
-        view.pack(fill="x", pady=(10, 4))
+        view.pack(fill="x", pady=(10, 0))
         self.table_view = tk.StringVar(value="sweep")
         self.view_buttons = []
         for value, label in (("sweep", "All configurations"), ("confirm", "Confirmed top 10")):
             btn = ttk.Radiobutton(view, text=label, value=value, variable=self.table_view,
                                   command=self.fill_table)
-            btn.pack(side="left", padx=(0, 12))
             self.view_buttons.append(btn)
-        ttk.Label(view, text="Highlighted rows are statistically tied with the best. "
-                  "Click a heading to sort.", style="Muted.TLabel").pack(side="right")
+        flow_row(view, self.view_buttons, gap=12)
+        note = ttk.Label(frame, text="Highlighted rows are statistically tied with the best. "
+                         "Click a heading to sort.", style="Muted.TLabel")
+        note.pack(anchor="w", fill="x", pady=(2, 4))
+        wrap_to(note)
         self.table = self.make_tree(frame, self.TABLE_COLUMNS, height=14)
         self._sort = ("rank", False)
         for col in self.TABLE_COLUMNS:
@@ -876,7 +954,7 @@ class OptimizerGUI(_RunnerWindow):
     def build_actions(self, frame):
         self.use_best_button = ttk.Button(frame, text="Use Best in Simulator",
                                           command=self.use_best)
-        self.use_best_button.pack(side="left")
+        self.use_best_button.pack(anchor="w", pady=(0, 6))
 
     def _tag_colors(self):
         self.table.tag_configure("tied", background=self.theme.recover,
@@ -945,10 +1023,7 @@ class OptimizerGUI(_RunnerWindow):
         games, grid, seed = checked
         confirm = bool(self.confirm_var.get())
         total = sweep_games(games, len(grid), confirm)
-        if total > LARGE_RUN_GAMES and not messagebox.askyesno(
-                "Large run", f"This will play {total:,} games over {len(grid)} "
-                "configurations and may take a while. You can stop it at any time. "
-                "Continue?", parent=self.root):
+        if not self.confirm_large(total, (games, tuple(grid), confirm)):
             return None
         self.seed = seed
         return lambda progress, stop, workers: run_sweep(
@@ -1017,24 +1092,33 @@ class OptimizerGUI(_RunnerWindow):
         self.fill_table()
 
     def use_best(self) -> Optional["SimulatorGUI"]:
+        """Fill the Simulator page with the winning settings (and show it)."""
         if not self.sweep or self.sweep.best is None:
-            messagebox.showinfo("No data", "Run an optimization first.", parent=self.root)
+            self.notice("Run an optimization first.")
             return None
         best = self.sweep.best
-        sim = SimulatorGUI(tk.Toplevel(self.root._root()))
+        running = self.app.page("simulator") if self.app is not None else None
+        if running is not None and running.task and running.task.running:
+            self.notice("The Simulator is still running. Stop it or let it finish, "
+                        "then press Use Best again.")
+            return None
+        if self.app is not None:
+            sim = self.app.show_page("simulator")
+        else:  # on its own (tests): a Simulator in a new window
+            sim = SimulatorGUI(tk.Toplevel(self.root))
         sim.jokers_var.set(str(best.jokers))
         sim.calls_var.set(str(best.inclusive_calls))
         sim.threshold_var.set(f"{best.threshold:g}")
         sim.seed_var.set(str(self.sweep.seed))
         sim.sims_var.set("10000")
+        sim.notice("Settings copied from the Optimizer's best. Press Run Simulations.")
         return sim
 
-    def show_advanced_stats(self):
+    def advanced_report(self) -> Optional[str]:
         if not self.sweep or not self.sweep.results:
-            messagebox.showinfo("No data", "Run an optimization first.", parent=self.root)
-            return
-        self.text_window("Advanced Statistics", describe_sweep_details(self.sweep, self.seed)
-                         + "\n\n" + describe_sweep(self.sweep, self.seed))
+            return None
+        return (describe_sweep_details(self.sweep, self.seed) + "\n\n"
+                + describe_sweep(self.sweep, self.seed))
 
     def export_target(self):
         return self.sweep if self.sweep and self.sweep.results else None

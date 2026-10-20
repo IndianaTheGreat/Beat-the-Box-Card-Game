@@ -4,9 +4,13 @@ V1 BUG REGRESSION TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_bugs.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Last Tested: 2026-10-20 (pytest: 254 passed)
+
+VERSION 1.2 CHANGES (2026-10-20):
+- Game over and cards left are checked on the page (banner, side panel):
+  there are no pop-up windows any more.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - GUI checks use the new widgets (box_views, flip_choices) and the tile
@@ -125,12 +129,13 @@ def test_bug_player_shows_a_game_over_message(tk_root, no_dialogs):
     gui.game = game(["5"], ["9"])
     gui.box_clicked(0)
     gui.make_call(HIGHER)
-    assert no_dialogs and no_dialogs[-1][1] == "You beat the box!"
-    gui.game = game(["A"] * 9, ["2"] * 9 + ["3"])
+    assert "You beat the box!" in gui.banner_var.get() and gui.banner_kind == "good"
+    gui.game = game(["K"] * 9, ["2"] * 9 + ["3"])
     for pos in range(9):
         gui.box_clicked(pos)
         gui.make_call(HIGHER)
-    assert no_dialogs[-1][1] == "The box wins"
+    assert gui.banner_var.get().startswith("The box wins") and gui.banner_kind == "bad"
+    assert no_dialogs == []   # the banner says it; nothing pops up
 
 
 def test_bug_player_odds_denominator_is_the_pile_size():
@@ -262,5 +267,6 @@ def test_bug_remaining_cards_shortcut_works(tk_root, no_dialogs):
     gui.root.focus_force()
     pump(tk_root)
     gui.root.event_generate("<Control-l>", when="now")
-    assert gui.cards_window is not None and gui.cards_window.winfo_exists()
+    assert gui.odds_var.get() and gui.side_view.get() == "cards"
+    assert gui.cards_frame.winfo_manager() == "pack"          # shown beside the board
     assert "Total" in gui.cards_text.get("1.0", "end") and " 43" in gui.cards_text.get("1.0", "end")
