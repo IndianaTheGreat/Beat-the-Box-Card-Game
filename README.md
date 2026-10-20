@@ -2,7 +2,7 @@
 
 # 🂠 Beat the Box
 
-**A solitaire card game of odds, nerve, and second chances, with a full toolkit for playing, simulating, and optimizing it.**
+**A solitaire card game of odds, nerve, and second chances, with a full toolkit for playing, simulating, and optimizing.**
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Tkinter](https://img.shields.io/badge/GUI-Tkinter-2E7D32)
