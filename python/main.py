@@ -1,223 +1,156 @@
+#!/usr/bin/env python3
+"""
+==============================================
+BEAT THE BOX SUITE LAUNCHER
+==============================================
+File Location: Beat-the-Box-Card-Game/python/main.py
+Status: ACTIVE
+Version: 1.0
+Last Updated: 2026-10-20
+Last Tested: 2026-10-20 (pytest: 135 passed)
+
+VERSION 1.0 CHANGES (2026-10-20):
+- Rewritten for Phase 1. Launches the four tools from the btb package
+  instead of the old BTB*.py modules.
+- Help windows (How it Works, Important Points) updated to the confirmed
+  rules and the corrected reading of the card count.
+
+DESCRIPTION:
+-----------
+Opens a small window with one button per tool. Each tool opens in its own
+window, so several can run at once (for example the Player and a long
+Optimizer run).
+
+DEPENDENCIES:
+------------
+- btb.gui_game (PlayerGUI, AssistantGUI)
+- btb.gui_sim (SimulatorGUI, OptimizerGUI)
+- Standard library: tkinter
+
+KEY FUNCTIONS:
+-------------
+- TOOLS -> list of (button name, window class, description)
+- MainApplication.launch(cls) -> opens one tool in a new window
+- main() -> starts the launcher
+
+CLI USAGE:
+---------
+# From the python/ folder
+python main.py
+"""
+
 import tkinter as tk
-from tkinter import ttk, scrolledtext
-from BTBGameAid import CustomGameGUI
-from BTBGamePlayer import NineBoxGUI
-from BTBOptimizer import OptimizerGUI
-from BTBSimulator import SimulatorGUI
+from tkinter import scrolledtext, ttk
+
+from btb.gui_game import AssistantGUI, PlayerGUI
+from btb.gui_sim import OptimizerGUI, SimulatorGUI
+
+TOOLS = [
+    ("Game Assistant", AssistantGUI,
+     "Mirror a game you're playing with a real deck: enter the cards as they "
+     "come and get live odds and counts."),
+    ("Game Player", PlayerGUI,
+     "Play Beat the Box with a shuffled deck, live odds, card counts and undo."),
+    ("Game Simulator", SimulatorGUI,
+     "Let the strategy play thousands of games and report the results."),
+    ("Strategy Optimizer", OptimizerGUI,
+     "Sweep jokers, inclusive calls and thresholds to find what wins most."),
+]
+
+HOW_IT_WORKS = """Beat the Box Suite: How it Works
+
+Every tool plays by the same rules engine (btb/engine.py), which follows
+RULES.md exactly. Nothing about the rules is duplicated between tools.
+
+1. Game Player
+   - Shuffled deck, live odds for every box (Ctrl+P), three card counts
+   - Undo any move, keyboard shortcuts for everything (Ctrl+H)
+
+2. Game Assistant
+   - Pick the nine box cards from your real deal
+   - For each flip, pick the card you actually drew
+   - Same odds, counts and undo as the Game Player
+
+3. Game Simulator
+   - Plays many games with the built-in strategy
+   - Reports win rate, boxes left, inclusive calls used and more
+   - Runs in the background: watch the progress, stop at any time
+
+4. Strategy Optimizer
+   - Sweeps joker counts, inclusive-call budgets and thresholds
+   - Every configuration plays the same seeded deals, so the comparison is fair
+   - Also runs in the background with a Stop button"""
+
+IMPORTANT_POINTS = """Beat the Box Suite: Important Points
+
+Rules worth remembering
+  - A same-rank card on a plain Higher or Lower is a loss.
+  - Inclusive calls are spent when made, win or lose.
+  - Exact match on an inclusive call = one recovery. A joker (drawn or in
+    the box) is an exact match for anything.
+  - Recoveries can't be banked: with no failed box, the recovery is lost.
+  - A recovered box comes back with the card it failed on.
+
+Settings limits
+  - Jokers: 0-2
+  - Inclusive calls: 0 to 43 + jokers
+  - Threshold: 0-100 percentage points (the gain an inclusive call must
+    offer over the best plain call before the strategy spends one)
+
+Reading the counts
+  - Positive count: high cards already seen, so more LOW cards remain.
+  - Negative count: more HIGH cards remain.
+
+Big runs
+  - The simulator and optimizer run in the background. Use Stop if a run
+    is taking too long; partial optimizer results are still shown.
+  - Use a seed to make a run repeatable."""
+
 
 class MainApplication:
-    def __init__(self, root):
+    def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("Beat the Box Suite")
-        self.setup_gui()
+        main = ttk.Frame(root, padding=20)
+        main.grid(row=0, column=0, sticky="nsew")
+        ttk.Label(main, text="🂠 Beat the Box Suite", font=("Helvetica", 16, "bold")).grid(
+            row=0, column=0, columnspan=2, pady=(0, 20))
+        for row, (name, cls, blurb) in enumerate(TOOLS, start=1):
+            ttk.Button(main, text=name, width=30,
+                       command=lambda c=cls: self.launch(c)).grid(
+                row=row, column=0, pady=8, padx=10)
+            ttk.Label(main, text=blurb, wraplength=260).grid(
+                row=row, column=1, pady=8, padx=10, sticky="w")
+        info = ttk.Frame(main)
+        info.grid(row=len(TOOLS) + 1, column=0, columnspan=2, pady=20)
+        ttk.Button(info, text="How it Works", width=20,
+                   command=lambda: self.text_window("How it Works", HOW_IT_WORKS)).pack(
+            side="left", padx=5)
+        ttk.Button(info, text="Important Points", width=20,
+                   command=lambda: self.text_window("Important Points", IMPORTANT_POINTS)).pack(
+            side="left", padx=5)
+        ttk.Button(main, text="Exit", width=20, command=root.destroy).grid(
+            row=len(TOOLS) + 2, column=0, columnspan=2)
 
-    def setup_gui(self):
-        main_frame = ttk.Frame(self.root, padding="20")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+    def launch(self, cls):
+        return cls(tk.Toplevel(self.root))
 
-        # Configure main window
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(1, weight=1)
+    def text_window(self, title: str, body: str):
+        win = tk.Toplevel(self.root)
+        win.title(title)
+        win.geometry("620x420")
+        widget = scrolledtext.ScrolledText(win, wrap="word", font=("Consolas", 10))
+        widget.pack(padx=10, pady=10, fill="both", expand=True)
+        widget.insert("end", body)
+        widget.config(state="disabled")
+        ttk.Button(win, text="Close", command=win.destroy).pack(pady=(0, 10))
 
-        # Title
-        title_label = ttk.Label(main_frame, 
-                              text="Beat the Box Game Suite", 
-                              font=('Helvetica', 16, 'bold'))
-        title_label.grid(row=0, column=0, columnspan=2, pady=(0, 20))
-
-        # Application buttons
-        ttk.Button(main_frame, 
-                  text="Game Assistant", 
-                  command=self.launch_custom_game,
-                  width=30).grid(row=1, column=0, pady=10, padx=10)
-        
-        ttk.Button(main_frame, 
-                  text="Game Player", 
-                  command=self.launch_game_player,
-                  width=30).grid(row=2, column=0, pady=10, padx=10)
-        
-        ttk.Button(main_frame, 
-                  text="Game Simulator", 
-                  command=self.launch_simulator,
-                  width=30).grid(row=3, column=0, pady=10, padx=10)
-        
-        ttk.Button(main_frame, 
-                  text="Strategy Optimizer", 
-                  command=self.launch_optimizer,
-                  width=30).grid(row=4, column=0, pady=10, padx=10)
-
-        # Description labels
-        ttk.Label(main_frame, 
-                 text="Play with guided assistance, custom card selection, and detailed statistics",
-                 wraplength=200).grid(row=1, column=1, pady=10, padx=10, sticky=tk.W)
-        
-        ttk.Label(main_frame, 
-                 text="Play Beat the Box with standard rules and automated shuffling",
-                 wraplength=200).grid(row=2, column=1, pady=10, padx=10, sticky=tk.W)
-        
-        ttk.Label(main_frame, 
-                 text="Run game simulations with various settings",
-                 wraplength=200).grid(row=3, column=1, pady=10, padx=10, sticky=tk.W)
-        
-        ttk.Label(main_frame, 
-                 text="Optimize game strategy with different parameters",
-                 wraplength=200).grid(row=4, column=1, pady=10, padx=10, sticky=tk.W)
-
-        # Additional Information Buttons
-        info_frame = ttk.Frame(main_frame)
-        info_frame.grid(row=5, column=0, columnspan=2, pady=20)
-        
-        ttk.Button(info_frame, 
-                  text="How it Works", 
-                  command=self.show_how_it_works,
-                  width=20).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(info_frame, 
-                  text="Important Points", 
-                  command=self.show_important_points,
-                  width=20).pack(side=tk.LEFT, padx=5)
-
-        # Exit button
-        ttk.Button(main_frame, 
-                  text="Exit", 
-                  command=self.root.quit,
-                  width=20).grid(row=6, column=0, columnspan=2, pady=(20,0))
-
-    def launch_game_player(self):
-        game_window = tk.Toplevel(self.root)
-        NineBoxGUI(game_window)
-
-    def launch_custom_game(self):
-        game_window = tk.Toplevel(self.root)
-        CustomGameGUI(game_window)
-
-    def launch_optimizer(self):
-        optimizer_window = tk.Toplevel(self.root)
-        OptimizerGUI(optimizer_window)
-
-    def launch_simulator(self):
-        simulator_window = tk.Toplevel(self.root)
-        SimulatorGUI(simulator_window)
-
-    def show_how_it_works(self):
-        info_window = tk.Toplevel(self.root)
-        info_window.title("How it Works")
-        info_window.geometry("600x400")
-
-        text_widget = scrolledtext.ScrolledText(info_window, wrap=tk.WORD, width=70, height=20)
-        text_widget.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
-
-        how_it_works = """Beat the Box Suite - How it Works
-
-1. Game Player (Standard Mode)
-   - Play the game with standard rules
-   - Automatic card shuffling and dealing
-   - Built-in probability calculations
-   - Keyboard shortcuts for quick gameplay
-
-2. Custom Game Mode
-   - Select specific cards for initial setup
-   - Choose cards to play from remaining deck
-   - Full control over game progression
-   - Ideal for practice and strategy testing
-
-3. Strategy Optimizer
-   - Test different game parameters
-   - Analyze win rates across configurations
-   - Find optimal joker and inclusive move counts
-   - Compare different threshold settings
-
-4. Game Simulator
-   - Run multiple games automatically
-   - Collect detailed statistics
-   - Test different strategies
-   - Analyze game outcomes
-
-Each component is designed to work together, allowing you to:
-- Learn the game mechanics
-- Practice with custom scenarios
-- Optimize your strategy
-- Validate your approach through simulation
-
-The suite uses a consistent rule set across all components and maintains game state accurately throughout play."""
-
-        text_widget.insert(tk.END, how_it_works)
-        text_widget.config(state='disabled')
-
-        ttk.Button(info_window, text="Close", 
-                  command=info_window.destroy).pack(pady=10)
-
-    def show_important_points(self):
-        info_window = tk.Toplevel(self.root)
-        info_window.title("Important Points")
-        info_window.geometry("600x400")
-
-        text_widget = scrolledtext.ScrolledText(info_window, wrap=tk.WORD, width=70, height=20)
-        text_widget.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
-
-        important_points = """Beat the Box Suite - Important Points
-
-Key Strategy Points:
-1. Inclusive Moves
-   - Each joker adds one to max inclusive moves
-   - Critical for recovering failed positions
-   - Most effective with cards near 7-8 value
-   - Can recover positions on exact matches
-
-2. Joker Mechanics
-   - Always successful regardless of prediction
-   - Can be used for guaranteed recoveries
-   - Count as success for all prediction types
-   - Don't affect card counting statistics
-
-3. Card Counting
-   - Three different counting methods available
-   - Use counts to guide decision making
-   - Counts update automatically during play
-   - Helpful for probability estimation
-
-4. Failed Box Recovery
-   - Only possible with inclusive moves
-   - Requires exact match or joker
-   - Choose recovery positions strategically
-   - Consider remaining deck composition
-
-Important Technical Notes:
-1. Save Resources
-   - Close windows you're not using
-   - Limit simultaneous simulations
-   - Use reasonable simulation counts
-   - Clear results periodically
-
-2. Parameter Limits
-   - Jokers: 0-2
-   - Inclusive moves: 0-43 (+ joker count)
-   - Threshold: 0-100%
-   - Nine positions maximum
-
-3. Game Progress
-   - Track moves and success rates
-   - Monitor inclusive moves remaining
-   - Watch for recovery opportunities
-   - Keep multiple positions viable
-
-4. Best Practices
-   - Start with standard mode to learn
-   - Use custom mode for specific scenarios
-   - Optimize settings incrementally
-   - Validate strategies with simulator"""
-
-        text_widget.insert(tk.END, important_points)
-        text_widget.config(state='disabled')
-
-        ttk.Button(info_window, text="Close", 
-                  command=info_window.destroy).pack(pady=10)
 
 def main():
     root = tk.Tk()
-    app = MainApplication(root)
+    MainApplication(root)
     root.mainloop()
+
 
 if __name__ == "__main__":
     main()
