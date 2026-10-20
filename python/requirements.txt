@@ -1,3 +1,16 @@
-# Beat the Box - Python suite (v1)
-# Tkinter is part of the Python standard library (see README for Linux notes).
-numpy>=1.24
+# ==============================================
+# RUNTIME REQUIREMENTS
+# ==============================================
+# File Location: Beat-the-Box-Card-Game/python/requirements.txt
+# Status: ACTIVE
+# Version: 1.0
+# Last Updated: 2026-10-20
+#
+# VERSION 1.0 CHANGES (2026-10-20):
+# - Removed numpy; the suite now uses only the standard library.
+#
+# DESCRIPTION:
+# -----------
+# Packages needed to RUN the suite. There are none: Tkinter is part of the
+# Python standard library (see README for Linux notes). The file is kept so
+# `pip install -r requirements.txt` still works.

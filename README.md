@@ -119,6 +119,7 @@ beat-the-box/
     │   ├── gui_game.py      🎮 Game Player + 🧭 Game Assistant
     │   └── gui_sim.py       📊 Simulator + 🔬 Strategy Optimizer
     ├── tests/               pytest suite (the spec for the TypeScript port)
+    ├── archive/             the original v1 files, kept for the record (not maintained)
     ├── requirements.txt
     └── requirements-dev.txt
 ```
