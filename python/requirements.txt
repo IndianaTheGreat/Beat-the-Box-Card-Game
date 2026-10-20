@@ -1,0 +1,3 @@
+# Beat the Box - Python suite (v1)
+# Tkinter is part of the Python standard library (see README for Linux notes).
+numpy>=1.24

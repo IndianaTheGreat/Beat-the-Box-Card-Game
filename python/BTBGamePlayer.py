@@ -99,10 +99,10 @@ class GameMove:
         # Store the number of inclusive moves remaining
         self._inclusive_moves_remaining = inclusive_moves_remaining
 
-        # Store counts
-        self.count1 = count1
-        self.count2 = count2
-        self.count3 = count3
+        # Store the counter states from BEFORE the move
+        self.prev_count1 = count1
+        self.prev_count2 = count2
+        self.prev_count3 = count3
 
     @property
     def inclusive_moves_remaining(self) -> int:
@@ -832,6 +832,11 @@ class NineBoxGUI:
         self.update_status(f"Selected {selected_card}. Choose Higher, Lower, or use an inclusive choice.")
 
     def process_play(self, position, player_choice):
+        # Save current counter states BEFORE any changes
+        current_count1 = self.count1
+        current_count2 = self.count2
+        current_count3 = self.count3
+
         # print(f"Processing play on game {id(self.game)}") # Debug
         # print(f"Start of process_play - Inclusive remaining: {self.game.inclusive_choices_remaining}") # Debug
 
@@ -855,8 +860,6 @@ class NineBoxGUI:
             self.update_status("No more cards in the deck!")
             return
 
-        # Update counts for the new card
-        self.update_counts(drawn_card)
                 
         # Save move with complete game state
         old_card = self.game.visible_cards[position]
@@ -868,10 +871,12 @@ class NineBoxGUI:
             used_inclusive=used_inclusive,
             failed_boxes=self.game.failed_boxes.copy(),  # Store current failed boxes state
             inclusive_moves_remaining=inclusive_at_start,
-            count1=self.count1,  # Store current counts
-            count2=self.count2,
-            count3=self.count3
+            count1=current_count1,  # Store the counts from BEFORE the move
+            count2=current_count2,
+            count3=current_count3
         ))
+
+        self.update_counts(drawn_card)
         
         # Special joker handling
         if drawn_card.is_joker or target_card.is_joker:  # Check both drawn card and target card
@@ -1046,11 +1051,13 @@ class NineBoxGUI:
         if self.game.move_history:  # If there are moves to undo
             # Get the last move's counts before we undo
             last_move = self.game.move_history[-1]
-            last_counts = (last_move.count1, last_move.count2, last_move.count3)
+            
             
             if self.game.undo_last_move():
-                # Restore the counts to previous state
-                self.count1, self.count2, self.count3 = last_counts
+                # Restore the counts to the state BEFORE the move was made
+                self.count1 = last_move.prev_count1
+                self.count2 = last_move.prev_count2
+                self.count3 = last_move.prev_count3
                 self.update_count_display()
                 
                 # Rest of the existing undo logic remains the same...

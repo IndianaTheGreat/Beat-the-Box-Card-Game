@@ -138,6 +138,12 @@ class CustomGameGUI(NineBoxGUI):
 
     def process_play(self, position, player_choice, drawn_card, target_card, actual_result):
         """Process the play after choice is made"""
+
+        # Store current counter states BEFORE any changes
+        current_count1 = self.count1
+        current_count2 = self.count2
+        current_count3 = self.count3
+
         is_correct = False
         used_inclusive = player_choice in ['higher_equal', 'lower_equal']
         
@@ -158,9 +164,9 @@ class CustomGameGUI(NineBoxGUI):
             used_inclusive=used_inclusive,
             failed_boxes=self.game.failed_boxes.copy(),
             inclusive_moves_remaining=self.game.inclusive_choices_remaining,
-            count1=self.count1,
-            count2=self.count2,
-            count3=self.count3
+            count1=current_count1,  # Store the counts from BEFORE the move
+            count2=current_count2,
+            count3=current_count3
         ))
         
         # Update counts for the new card

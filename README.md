@@ -1,159 +1,137 @@
-# Beat-the-Box-Card-Game
-Beat the Box or Beat the Deck is a card game. The file allows you to play with an app aid to make the best moves, play the game in the app, optimize strategies, and simulate games
+<div align="center">
 
-Beat the Box - Game Rules and Documentation
+# 🂠 Beat the Box
 
-Overview:
-Beat the Box is a probability-based card game where players try to get through a deck of cards by making correct predictions about card values. This app allows for 4 different apps to be used to best learn to play the game, and improve your gameplay.
+**A solitaire card game of odds, nerve, and second chances, with a full toolkit for playing, simulating, and optimizing it.**
 
-1. Custom Game Mode
-   - Select specific cards for initial setup
-   - Choose cards to play from remaining deck
-   - Full control over game progression
-   - Ideal for practice and strategy testing
-  
-2. Game Player (Standard Mode)
-   - Play the game with standard rules
-   - Automatic card shuffling and dealing
-   - Built-in probability calculations
-   - Keyboard shortcuts for quick gameplay
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![Tkinter](https://img.shields.io/badge/GUI-Tkinter-2E7D32)
+![Status](https://img.shields.io/badge/status-in%20development-orange)
 
-3. Strategy Optimizer
-   - Test different game parameters
-   - Analyze win rates across configurations
-   - Find optimal joker and inclusive move counts
-   - Compare different threshold settings
+[Rules](RULES.md) · [Getting Started](#-getting-started) · [The Suite](#-the-suite) · [Roadmap](#%EF%B8%8F-roadmap)
 
-4. Game Simulator
-   - Run multiple games automatically
-   - Collect detailed statistics
-   - Test different strategies
-   - Analyze game outcomes
+</div>
 
-Each component is designed to work together, allowing you to:
-- Learn the game mechanics
-- Practice with custom scenarios
-- Optimize your strategy
-- Validate your approach through simulation
+---
 
-The suite uses a consistent rule set across all components and maintains game state accurately throughout play.
+## 🎲 What is Beat the Box?
 
-Setup:
-1. A standard deck of 52 cards is used (optionally with 1-2 jokers)
-2. Nine cards are dealt face up in a 3x3 grid (the "box")
-3. The remaining cards form the draw pile
+Nine cards sit face up in a 3×3 grid: **the box**. Pick a card, call whether the next card off the deck will be **higher** or **lower**, and flip.
 
-Basic Rules:
-1. Players select one of the nine visible cards and predict if the next card from the draw pile will be:
-   - Higher
-   - Lower
-   - Higher than or Equal to (using an inclusive choice)
-   - Lower than or Equal to (using an inclusive choice)
+- Call it right, and the new card takes its place.
+- Call it wrong, and that box is gone.
 
-2. If the prediction is correct:
-   - The drawn card replaces the selected card
-   - Play continues
-   
-3. If the prediction is wrong:
-   - The selected position becomes "failed"
-   - That position cannot be used unless recovered
+Survive the whole deck with at least one box standing, and you **beat the box**.
 
-Special Rules:
-1. Inclusive Choices (Higher/Equal or Lower/Equal):
-   - Players start with a limited number of these choices
-   - When using an inclusive choice and drawing an EXACT match:
-     * Player can recover one previously failed box
-   
-2. Joker Rules:
-   - Game can be played with 0, 1, or 2 jokers
-   - Jokers are always successful regardless of prediction
-   - If a joker is drawn while using an inclusive choice:
-     * Player can recover one previously failed box
-   - If a card is played on a joker it is always successful
-   - If an inclusive choice is played on a joker it is always successful
+You also get a few **inclusive calls** (higher-*or-equal*, lower-*or-equal*). Hit an exact match with one, and you can **bring a dead box back to life**. Add up to two **wild jokers**, and every game becomes a real puzzle of probability and timing.
 
-Victory/Loss Conditions:
-- Win: Successfully get through the entire draw pile with at least one usable position
-- Loss: All positions become failed, or unable to complete the deck
+```
+┌─────┬─────┬─────┐
+│  7♠ │  K♥ │  3♦ │      Call: 3♦ → HIGHER
+├─────┼─────┼─────┤
+│  9♣ │  A♠ │ ✖️  │      Flip: J♣  ✅
+├─────┼─────┼─────┤
+│  J♦ │  2♣ │  8♥ │      Draw pile: 31
+└─────┴─────┴─────┘
+```
 
-Strategy Elements:
-1. Probability Management:
-   - Calculate odds of higher/lower for each card
-   - Save inclusive choices for critical moments
-   
-2. Failed Box Recovery:
-   - Strategic use of inclusive choices for recovery opportunities
-   - Careful selection of which failed box to recover
+📖 **Full rules, with examples:** [RULES.md](RULES.md)
 
-Game Variations:
-1. Number of Inclusive Choices:
-   - With no jokers: 0-43 choices
-   - With one joker: 0-44 choices
-   - With two jokers: 0-45 choices
+---
 
-2. Failed Box Display:
-   - Option to show/hide failed card values when recovering
-  
-Key Strategy Points:
-1. Inclusive Moves
-   - Each joker adds one to max inclusive moves
-   - Critical for recovering failed positions
-   - Most effective with cards near 7-8 value
-   - Can recover positions on exact matches
+## 🧰 The Suite
 
-2. Joker Mechanics
-   - Always successful regardless of prediction
-   - Can be used for guaranteed recoveries
-   - Count as success for all prediction types
-   - Don't affect card counting statistics
+This repo is more than the game. It's a set of tools for understanding it.
 
-3. Card Counting
-   - Three different counting methods available
-   - Use counts to guide decision making
-   - Counts update automatically during play
-   - Helpful for probability estimation
+| Tool | What it does |
+|---|---|
+| 🎮 **Game Player** | Play the full game with shuffled decks, live odds for every box, three card-counting methods, undo, and keyboard shortcuts. |
+| 🧭 **Game Assistant** | Mirror a game you're playing with a real deck. Enter the cards as they come and get the odds and counts as you go. |
+| 📊 **Simulator** | Let a strategy play thousands of games automatically and report win rate, boxes left, inclusive calls used, and more. |
+| 🔬 **Strategy Optimizer** | Sweep joker counts, inclusive-call budgets, and decision thresholds to find the settings and strategy that win most often. |
 
-4. Failed Box Recovery
-   - Only possible with inclusive moves
-   - Requires exact match or joker
-   - Choose recovery positions strategically
-   - Consider remaining deck composition
+All four open from one launcher (`main.py`).
 
-Important Technical Notes:
-1. Save Resources
-   - Close windows you're not using
-   - Limit simultaneous simulations
-   - Use reasonable simulation counts
-   - Clear results periodically
+---
 
-2. Parameter Limits
-   - Jokers: 0-2
-   - Inclusive moves: 0-43 (+ joker count)
-   - Threshold: 0-100%
-   - Nine positions maximum
+## 🚀 Getting Started
 
-3. Game Progress
-   - Track moves and success rates
-   - Monitor inclusive moves remaining
-   - Watch for recovery opportunities
-   - Keep multiple positions viable
+**Requirements:** Python 3.10 or newer. Tkinter comes with the standard Python installer on Windows and macOS.
 
-4. Best Practices
-   - Start with standard mode to learn
-   - Use custom mode for specific scenarios
-   - Optimize settings incrementally
-   - Validate strategies with simulator
-  
-Notes:
-The counter for each Card Counting Methods has an issue for the first undo. It will not undo the change on the count, but only for the first time you hit undo. All subsequent undo clicks will change and update the count.
-This was also an issue faced when trying to undo the Higher/Equal or Lower/Equal count, which was fixed, but I could not figure out how to fix it with the Card Counting Method without changing the code for the gameplay and game statistics.
+```bash
+git clone https://github.com/<your-username>/beat-the-box.git
+cd beat-the-box/python
+pip install -r requirements.txt
+python main.py
+```
 
-Suggestions:
-For further updates I may work on, or if other want to, here are some of my thoughts.
-1. Fix the counter for the Card Counting Methods
-2. Improve graphics for Game Player and Game Aid
-   a. Larger and more vibrant cards
-   b. add a drag and drop for playing the cards
-   c. Highlightes on card for which are the best to play
-   d. Adding text and graphics for winning or losing
-3. Add graphs for advanced statistics in the Simulator and Optimizer files
+<details>
+<summary><b>Linux: Tkinter not found?</b></summary>
+
+Some Linux distributions ship Python without Tkinter. Install it with your package manager:
+
+```bash
+sudo apt install python3-tk      # Debian / Ubuntu
+sudo dnf install python3-tkinter # Fedora
+```
+
+</details>
+
+### ⌨️ Game Player shortcuts
+
+| Keys | Action |
+|---|---|
+| `7 8 9` / `4 5 6` / `1 2 3` | Select a box (laid out like a numpad) |
+| `W` / `S` | Higher / Lower |
+| `D` / `A` | Higher or Equal / Lower or Equal |
+| `Ctrl+Z` | Undo |
+| `Ctrl+N` | New game |
+| `Ctrl+P` | Show probabilities |
+| `Ctrl+C` | Show remaining cards |
+| `Ctrl+R` / `Ctrl+Y` / `Ctrl+H` | Rules / Strategy / Shortcut help |
+
+---
+
+## 📁 Project Structure
+
+```
+beat-the-box/
+├── README.md            ← you are here
+├── RULES.md             ← the official rules (single source of truth)
+└── python/              ← v1: the original Python / Tkinter suite
+    ├── main.py              launcher
+    ├── BTBGamePlayer.py     🎮 Game Player
+    ├── BTBGameAid.py        🧭 Game Assistant
+    ├── BTBSimulator.py      📊 Simulator
+    ├── BTBOptimizer.py      🔬 Strategy Optimizer
+    └── requirements.txt
+```
+
+---
+
+## 🗺️ Roadmap
+
+- [ ] **Unified rules engine.** One shared Python module that every tool uses, so the rules live in one place.
+- [ ] **Bug fixes.** Joker handling, the recovery logic, undo, and the probability math, so all four tools agree with [RULES.md](RULES.md).
+- [ ] **A responsive optimizer.** Run it in the background, add a Stop button, and show live progress.
+- [ ] **Tests** covering every rule in [RULES.md](RULES.md).
+- [ ] **TypeScript engine.** A port of the rules engine, checked against the same tests as the Python version.
+- [ ] **Chrome extension.** Play in the browser side panel, with no install beyond the extension itself.
+- [ ] **Web version** on GitHub Pages: play from a link.
+
+---
+
+## 🧠 Strategy Tips
+
+- **Middle cards are the danger zone.** A `2` or an `A` is close to a sure thing, while a `7` or `8` is a coin flip. Spend inclusive calls on the middle.
+- **A joker in the box is a free recovery.** Play an inclusive call on it.
+- **Watch the count.** A strongly positive count means low cards are due, and a negative count means high cards are.
+- **Choose recoveries carefully.** Bring back the failed box with the most extreme card, since it gives the easiest next call.
+
+---
+
+<div align="center">
+
+Built by **Indiana the Great** · Rules in [RULES.md](RULES.md)
+
+</div>
