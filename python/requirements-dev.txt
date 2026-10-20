@@ -1,0 +1,2 @@
+# For running the test suite: pytest (from the python/ folder)
+pytest>=7.0

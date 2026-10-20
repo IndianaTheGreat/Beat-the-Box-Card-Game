@@ -59,11 +59,22 @@ All four open from one launcher (`main.py`).
 **Requirements:** Python 3.10 or newer. Tkinter comes with the standard Python installer on Windows and macOS.
 
 ```bash
-git clone https://github.com/<your-username>/beat-the-box.git
-cd beat-the-box/python
-pip install -r requirements.txt
+git clone https://github.com/IndianaTheGreat/Beat-the-Box-Card-Game.git
+cd Beat-the-Box-Card-Game/python
 python main.py
 ```
+
+The suite needs nothing beyond the Python standard library.
+
+### 🧪 Running the tests
+
+```bash
+cd python
+pip install -r requirements-dev.txt
+pytest
+```
+
+The tests in `python/tests/` are the executable spec: one per rule in [RULES.md](RULES.md), plus one per bug fixed from v1. GUI tests skip when no display is available; on headless Linux, run `xvfb-run pytest`.
 
 <details>
 <summary><b>Linux: Tkinter not found?</b></summary>
@@ -87,7 +98,7 @@ sudo dnf install python3-tkinter # Fedora
 | `Ctrl+Z` | Undo |
 | `Ctrl+N` | New game |
 | `Ctrl+P` | Show probabilities |
-| `Ctrl+C` | Show remaining cards |
+| `Ctrl+L` | Show remaining cards (list) |
 | `Ctrl+R` / `Ctrl+Y` / `Ctrl+H` | Rules / Strategy / Shortcut help |
 
 ---
@@ -98,23 +109,30 @@ sudo dnf install python3-tkinter # Fedora
 beat-the-box/
 ├── README.md            ← you are here
 ├── RULES.md             ← the official rules (single source of truth)
-└── python/              ← v1: the original Python / Tkinter suite
+└── python/              ← v1: the Python / Tkinter suite
     ├── main.py              launcher
-    ├── BTBGamePlayer.py     🎮 Game Player
-    ├── BTBGameAid.py        🧭 Game Assistant
-    ├── BTBSimulator.py      📊 Simulator
-    ├── BTBOptimizer.py      🔬 Strategy Optimizer
-    └── requirements.txt
+    ├── btb/
+    │   ├── engine.py        the rules engine: no GUI, used by every tool
+    │   ├── strategy.py      the simulator's playing policy
+    │   ├── sim.py           batch simulations and parameter sweeps
+    │   ├── text.py          in-app rules, strategy guide, shortcuts
+    │   ├── gui_game.py      🎮 Game Player + 🧭 Game Assistant
+    │   └── gui_sim.py       📊 Simulator + 🔬 Strategy Optimizer
+    ├── tests/               pytest suite (the spec for the TypeScript port)
+    ├── requirements.txt
+    └── requirements-dev.txt
 ```
+
+Every tool plays through `btb/engine.py`, so the rules live in exactly one place. Seeded deals use a Mulberry32 shuffle that the TypeScript port can reproduce card for card.
 
 ---
 
 ## 🗺️ Roadmap
 
-- [ ] **Unified rules engine.** One shared Python module that every tool uses, so the rules live in one place.
-- [ ] **Bug fixes.** Joker handling, the recovery logic, undo, and the probability math, so all four tools agree with [RULES.md](RULES.md).
-- [ ] **A responsive optimizer.** Run it in the background, add a Stop button, and show live progress.
-- [ ] **Tests** covering every rule in [RULES.md](RULES.md).
+- [x] **Unified rules engine.** One shared Python module that every tool uses, so the rules live in one place.
+- [x] **Bug fixes.** Joker handling, the recovery logic, undo, and the probability math, so all four tools agree with [RULES.md](RULES.md).
+- [x] **A responsive optimizer.** Run it in the background, add a Stop button, and show live progress.
+- [x] **Tests** covering every rule in [RULES.md](RULES.md).
 - [ ] **TypeScript engine.** A port of the rules engine, checked against the same tests as the Python version.
 - [ ] **Chrome extension.** Play in the browser side panel, with no install beyond the extension itself.
 - [ ] **Web version** on GitHub Pages: play from a link.
@@ -124,7 +142,7 @@ beat-the-box/
 ## 🧠 Strategy Tips
 
 - **Middle cards are the danger zone.** A `2` or an `A` is close to a sure thing, while a `7` or `8` is a coin flip. Spend inclusive calls on the middle.
-- **A joker in the box is a free recovery.** Play an inclusive call on it.
+- **A joker in the box is a free recovery.** Play an inclusive call on it once you have a failed box to bring back. Until then, keep it.
 - **Watch the count.** A strongly positive count means low cards are due, and a negative count means high cards are.
 - **Choose recoveries carefully.** Bring back the failed box with the most extreme card, since it gives the easiest next call.
 
