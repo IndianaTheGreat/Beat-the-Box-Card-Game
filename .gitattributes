@@ -1,0 +1,25 @@
+# ==============================================
+# GIT LINE-ENDING RULES
+# ==============================================
+# File Location: Beat-the-Box-Card-Game/.gitattributes
+# Status: ACTIVE
+# Version: 1.0
+# Last Updated: 2026-10-20
+#
+# VERSION 1.0 CHANGES (2026-10-20):
+# - New. Every text file uses LF line endings, on every computer.
+#
+# DESCRIPTION:
+# -----------
+# Tells Git how to treat line endings. Windows ends lines with CRLF and
+# Linux/Mac use LF; without this file the repo gets a mix, which causes the
+# "LF will be replaced by CRLF" warnings and diffs where every line changed.
+#   text=auto  - Git detects which files are text (images stay untouched)
+#   eol=lf     - text files are LF in the repo AND in your working folder
+#
+# NOTES:
+# -----
+# - After adding this file, run once: git add --renormalize .
+# - VS Code and Python handle LF files fine on Windows.
+
+* text=auto eol=lf
