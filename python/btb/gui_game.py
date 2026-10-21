@@ -4,9 +4,20 @@ GAME PLAYER AND GAME ASSISTANT PAGES
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/gui_game.py
 Status: ACTIVE
-Version: 1.5
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 311 passed)
+Version: 1.6
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.6 CHANGES (2026-10-21):
+- Cancel on the New Game panel (and on the Assistant's card picker) puts
+  the focus back on the page. Before, it stayed in the hidden Inclusive
+  calls box, which takes typing, so every shortcut was ignored.
+- The Assistant clears the flipped card when a new game starts. A pick
+  left over from the last game stayed selected if that card was still in
+  the new pile.
+- "with 1 card left" instead of "with 1 cards left" when every box fails.
+- Numpad 5 with NumLock off also works on Windows, where Tk calls that
+  key Clear (X11 calls it KP_Begin). The keys are in KEYPAD_NUMLOCK_OFF.
 
 VERSION 1.5 CHANGES (2026-10-20):
 - Fixes the odds table's sideways scrollbar in a big window: the Card
@@ -132,6 +143,7 @@ KEY FUNCTIONS:
   table_name(card), odds_table_width()
   -> the odds table's columns, rows and sorting
 - AssistantGUI -> same page plus the flipped-card grid
+- KEYPAD_NUMLOCK_OFF -> numpad key names with NumLock off (X11 and Windows)
 
 ERROR HANDLING:
 --------------
@@ -182,6 +194,11 @@ BANNER_KINDS = ("neutral", "good", "bad", "recover")
 SIDE_VIEWS = (("count", "Count & plays"), ("odds", "Odds table"), ("cards", "Cards left"))
 VIEW_SWITCH = {"count": "counts", "odds": "odds", "cards": "counts"}   # the switch each needs
 TEXT_INPUTS = (tk.Entry, ttk.Entry, tk.Text, tk.Spinbox)  # ttk.Combobox is a ttk.Entry
+# The numpad keys with NumLock off. The middle key (5) has no arrow: X11
+# calls it KP_Begin and Windows calls it Clear, so both are bound.
+KEYPAD_NUMLOCK_OFF = {"7": ("KP_Home",), "8": ("KP_Up",), "9": ("KP_Prior",),
+                      "4": ("KP_Left",), "5": ("KP_Begin", "Clear"), "6": ("KP_Right",),
+                      "1": ("KP_End",), "2": ("KP_Down",), "3": ("KP_Next",)}
 
 
 def _typing_in(widget) -> bool:
@@ -808,13 +825,10 @@ class PlayerGUI:
             plain_letter = action in actions
             for seq in sequences:
                 self.root.bind(seq, self._key_handler(handler, plain_letter), add="+")
-        keypad = {"7": "KP_Home", "8": "KP_Up", "9": "KP_Prior", "4": "KP_Left",
-                  "5": "KP_Begin", "6": "KP_Right", "1": "KP_End", "2": "KP_Down",
-                  "3": "KP_Next"}
         for key, pos in text.POSITION_KEYS.items():
             handler = self._key_handler(lambda p=pos: self.box_clicked(p), True)
-            for seq in (f"<KeyPress-{key}>", f"<KeyPress-KP_{key}>",
-                        f"<KeyPress-{keypad[key]}>"):
+            for seq in [f"<KeyPress-{key}>", f"<KeyPress-KP_{key}>"] + [
+                    f"<KeyPress-{name}>" for name in KEYPAD_NUMLOCK_OFF[key]]:
                 try:
                     self.root.bind(seq, handler, add="+")
                 except tk.TclError:
@@ -859,6 +873,7 @@ class PlayerGUI:
         self.layout_side()
         self.set_status("Select a box and make your call." if self.game else self.WELCOME)
         self.refresh()
+        self.frame.focus_set()   # out of the hidden settings box, or the keys stay dead
 
     def start(self, settings: GameSettings, game: Game, message: str):
         self.settings = settings
@@ -1028,7 +1043,8 @@ class PlayerGUI:
             last = getattr(self, "last_play", "")
             self.set_banner(f"The box wins. {last}" if last else
                             "The box wins: all nine boxes failed.", "bad")
-            self.set_status(f"All nine boxes failed, with {game.cards_left} cards left in the "
+            cards = f"{game.cards_left} card{'s' if game.cards_left != 1 else ''}"
+            self.set_status(f"All nine boxes failed, with {cards} left in the "
                             "pile. Press New Game (Ctrl+N) to play again.")
         self.refresh()
 
@@ -1293,7 +1309,10 @@ class AssistantGUI(PlayerGUI):
         return frame
 
     def start(self, settings: GameSettings, game: Game, message: str):
-        """Show a flip button only for the jokers this game has."""
+        """Show a flip button only for the jokers this game has, with no
+        flip picked yet (a pick left over from the last game would stay
+        selected if that card is still in the new pile)."""
+        self.drawn_var.set("")
         self.flip_grid.show_jokers(settings.jokers)
         super().start(settings, game, message)
 
@@ -1363,6 +1382,7 @@ class AssistantGUI(PlayerGUI):
         self.layout_side()
         self.set_status("Select a box and make your call." if self.game else self.WELCOME)
         self.refresh()   # put the old board back
+        self.frame.focus_set()   # out of the hidden picker, or the keys stay dead
 
     def create_game(self, settings: GameSettings, box: Optional[List[Card]] = None):
         if box is None:

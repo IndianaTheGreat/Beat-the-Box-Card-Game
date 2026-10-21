@@ -4,9 +4,19 @@ PYTEST FIXTURES
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/conftest.py
 Status: ACTIVE
-Version: 1.2
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Version: 1.3
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.3 CHANGES (2026-10-21):
+- tk_root now fails a GUI test when a Tk callback (a key handler, a
+  button, an after() timer) raised an error during it. Before, Tk only
+  printed such errors, and after one test replaced the error hook on the
+  shared root they weren't even printed, so a broken shortcut could pass.
+  The hook is put back after every test.
+- New set_window_size: tests that need a big window (1306 x 678,
+  1667 x 967) lift Tk's screen-size cap first and check they really got
+  that size. On a scaled Windows display the window was silently capped.
 
 VERSION 1.2 CHANGES (2026-10-20):
 - Fixes the test run freezing on Windows ("Not responding" windows, then
@@ -34,13 +44,16 @@ Fixtures used across the tests.
 KEY FUNCTIONS:
 -------------
 - tk_root -> the hidden Tk root shared by the whole run; skips the test
-  when Tk or a display is missing; cleans up after the test
+  when Tk or a display is missing; cleans up after the test, and fails it
+  if a Tk callback raised an error (root.callback_errors lists them)
 - session_root() -> that root (created on first use)
 - clean_up(root) -> closes windows and drains pending work (tk_root's
   teardown; tests call it to check it)
 - no_dialogs -> records message boxes instead of blocking on them
 - isolated_settings (automatic) -> a private settings folder per test
 - pump(root, until) -> runs the Tk event loop until a condition is true
+- set_window_size(window, size) -> an exact window size, even one bigger
+  than this screen (skips if the screen still won't allow it)
 
 DEPENDENCIES:
 ------------
@@ -67,6 +80,7 @@ import gc
 import os
 import sys
 import time
+import traceback
 
 import pytest
 
@@ -169,8 +183,20 @@ def tk_root():
     root = session_root()
     from btb import theme
     theme.use(root)                  # the default theme (settings are fresh)
-    yield root
-    clean_up(root)
+    # Tk only prints an error raised inside a callback and carries on, so a
+    # test would pass while a key handler crashed. Collect them instead.
+    errors: list = []
+    root.callback_errors = errors
+    root.report_callback_exception = lambda kind, value, tb: errors.append((kind, value, tb))
+    try:
+        yield root
+        clean_up(root)
+    finally:
+        del root.report_callback_exception          # back to Tk's own hook
+    if errors:
+        text = "".join("".join(traceback.format_exception(*e)) for e in errors)
+        pytest.fail(f"{len(errors)} error(s) inside Tk callbacks during this test:\n{text}",
+                    pytrace=False)
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -195,6 +221,22 @@ def no_dialogs(monkeypatch):
                             lambda title, msg, _n=name, **kw: shown.append((_n, title, msg)))
     monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: True)
     return shown
+
+
+def set_window_size(window, size: str) -> None:
+    """Give a test window exactly this size ("1306x678"). Tk caps a window
+    at the screen size, and a scaled Windows display can look as small as
+    1280 x 720 to Tk, so the cap is lifted first. If the window still
+    doesn't get that size, the test is skipped (saying why) rather than
+    checking a different size than it claims."""
+    width, height = (int(v) for v in size.split("x"))
+    cap_w, cap_h = window.maxsize()
+    window.maxsize(max(cap_w, width), max(cap_h, height))
+    window.geometry(size)
+    window.update()
+    got = (window.winfo_width(), window.winfo_height())
+    if got != (width, height):
+        pytest.skip(f"this screen won't hold a {size} window (it got {got[0]}x{got[1]})")
 
 
 def pump(root, until=None, timeout: float = 10.0):

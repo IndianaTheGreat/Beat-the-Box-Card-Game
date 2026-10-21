@@ -1,0 +1,43 @@
+{
+  "_header": {
+    "title": "CHROME EXTENSION PACKAGE SETTINGS",
+    "file_location": "Beat-the-Box-Card-Game/extension/package.json",
+    "status": "ACTIVE",
+    "version": "1.1",
+    "last_updated": "2026-10-21",
+    "last_tested": "2026-10-21 (node --test: 80 passed)",
+    "version_1_1_changes": [
+      "Added this _header block. JSON can't hold comments, so the header is a key",
+      "that npm and Node ignore."
+    ],
+    "version_1_0_changes": [
+      "New. Marks the folder as ES modules and gives the test and type-check commands."
+    ],
+    "description": [
+      "Settings for the extension folder. There are no npm packages: Node 22.18 or",
+      "newer runs the .ts files directly, so no npm install is needed."
+    ],
+    "cli_usage": [
+      "From the extension folder:",
+      "  node --test       (or npm test)       run every test",
+      "  npm run check                          optional type check (downloads TypeScript 7 once)",
+      "On Windows PowerShell, use npm.cmd / npx.cmd if scripts are blocked."
+    ],
+    "notes": [
+      "The top-level \"version\" below is the extension's version, not this file's.",
+      "Keep it in step with manifest.json once that file exists."
+    ]
+  },
+  "name": "beat-the-box-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Beat the Box for Chrome. Rules engine, strategy and simulator so far; the pages come next.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "npx --yes --package=typescript@7 tsc --noEmit -p ."
+  }
+}

@@ -40,7 +40,7 @@ Get through the **entire draw pile** with **at least one box still alive**.
 
 1. Shuffle a standard **52-card deck**, plus **0, 1, or 2 jokers** (your choice).
 2. Deal **9 cards face up** in a 3×3 grid. This is **the box**.
-3. The remaining cards form the **draw pile** (43 cards, or 44–45 with jokers).
+3. The remaining cards form the **draw pile** (43 cards, or 44 or 45 with jokers).
 
 ```
 ┌─────┬─────┬─────┐
@@ -144,6 +144,8 @@ When you earn a recovery:
 |---|---|
 | 🏆 **Win** | The draw pile runs out **and at least one box is still alive**. |
 | 💀 **Lose** | **All nine boxes fail.** |
+
+If the **last card** in the draw pile earns a recovery, you can still use it (or skip it) before the game ends. The recovered box counts as alive, so it adds to your boxes left.
 
 The more boxes still alive at the end, the cleaner the win. The simulator tracks this as **boxes left**.
 

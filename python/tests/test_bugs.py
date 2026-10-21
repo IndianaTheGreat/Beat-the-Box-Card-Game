@@ -4,9 +4,17 @@ V1 BUG REGRESSION TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_bugs.py
 Status: ACTIVE
-Version: 1.4
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 308 passed)
+Version: 1.5
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.5 CHANGES (2026-10-21):
+- New, from the 2026-10-21 review: the shortcuts work after cancelling
+  New Game or the Assistant's picker, the Assistant forgets the last
+  game's flip pick, "1 card left", and numpad 5 is bound for Windows.
+- The picker test no longer replaces the error hook on the shared Tk
+  root (that hid callback errors from every later test); tk_root in
+  conftest.py now collects them and fails the test.
 
 VERSION 1.4 CHANGES (2026-10-20):
 - New: the Assistant's card picker no longer freezes the window (run in
@@ -402,8 +410,6 @@ def test_bug_a_rebuilt_card_picker_leaves_no_dead_resize_handlers(tk_root, no_di
     # which outlives it, so old grids kept trying to resize destroyed buttons.
     import tkinter as tk
     from btb.gui_game import AssistantGUI, GameSettings
-    errors = []
-    tk_root.report_callback_exception = lambda *exc: errors.append(exc)
     gui = AssistantGUI(tk.Toplevel(tk_root))
     canvas = gui.side_scroll.canvas
     before = canvas.bind("<Configure>")
@@ -415,7 +421,7 @@ def test_bug_a_rebuilt_card_picker_leaves_no_dead_resize_handlers(tk_root, no_di
     pump(tk_root)
     gui.side_scroll.set_width(330)
     pump(tk_root)
-    assert errors == []
+    assert tk_root.callback_errors == []   # tk_root also fails the test on any
 
 
 def test_bug_the_flip_grid_shows_only_the_jokers_in_this_game(tk_root, no_dialogs):
@@ -437,3 +443,186 @@ def test_bug_a_kindless_joker_takes_and_returns_the_card_from_the_pile():
     pile = standard_deck(2)
     taken = take_card(pile, Card.joker())          # no kind asked for: the first joker
     assert taken.kind == "big" and [c.kind for c in pile if c.is_joker] == ["little"]
+
+# ============================================== Found in the 2026-10-21 review == #
+
+def _focused_key(window, root, sequence):
+    """Press a key on whatever has the focus now (the way a real key press
+    arrives), without first moving the focus back to the window."""
+    pump(root)
+    target = window.focus_get() or window
+    target.event_generate(sequence, when="now")
+    pump(root)
+
+
+@pytest.mark.parametrize("how", ["player", "assistant settings", "assistant picker"])
+def test_bug_keys_work_after_cancelling_a_new_game(tk_root, no_dialogs, how):
+    # Old: New Game put the focus in the Inclusive calls box, and Cancel left
+    # it there (hidden). That box takes typing, so every shortcut was ignored.
+    import tkinter as tk
+    from btb.gui_game import AssistantGUI, GameSettings, PlayerGUI
+    window = tk.Toplevel(tk_root)
+    gui = (PlayerGUI if how == "player" else AssistantGUI)(window)
+    gui.game = game(["5", "6", "7"], ["K", "A", "Q"])
+    gui.refresh()
+    window.focus_force()
+    gui.new_game()                                   # the settings panel, focus in its box
+    pump(tk_root)
+    if how == "assistant picker":
+        gui.new_game(GameSettings())                 # on to the nine-card picker
+        pump(tk_root)
+        gui.cancel_pick()
+    else:
+        gui.cancel_setup()
+    _focused_key(window, tk_root, "<Key-7>")         # top-left box
+    assert gui.selected == 0
+    if how != "player":
+        gui.drawn_var.set(gui.game.draw_pile[0].key())   # the Assistant needs the flip
+    _focused_key(window, tk_root, "<Key-w>")         # Higher: 5 -> K
+    assert gui.game.box[0].rank == 13
+
+
+def test_bug_assistant_forgets_the_last_games_flip_pick(tk_root, no_dialogs):
+    # Old: a flip picked but not played stayed picked in the next game when
+    # that card was still in the new pile.
+    import tkinter as tk
+    from btb.gui_game import AssistantGUI, GameSettings
+    gui = AssistantGUI(tk.Toplevel(tk_root))
+    box = cards("5", "6", "7", "8", "9", "10", "J", "Q", "2")
+    gui.new_game(GameSettings(jokers=0), box=box)
+    gui.drawn_var.set(Card.parse("K♥").key())        # picked, never played
+    gui.new_game(GameSettings(jokers=0), box=box)
+    assert gui.drawn_var.get() == ""
+
+
+@pytest.mark.parametrize("left, words", [(1, "with 1 card left"), (2, "with 2 cards left")])
+def test_bug_losing_message_counts_cards_in_words(tk_root, no_dialogs, left, words):
+    # Old: "with 1 cards left".
+    import tkinter as tk
+    from btb.gui_game import PlayerGUI
+    gui = PlayerGUI(tk.Toplevel(tk_root))
+    gui.game = game(["K"] * 9, ["2"] * 9 + ["3"] * left)
+    gui.refresh()
+    for pos in range(9):
+        gui.box_clicked(pos)
+        gui.make_call(HIGHER)                        # a 2 on a K: fails
+    assert gui.game.lost and gui.game.cards_left == left
+    assert words in gui.status_var.get()
+
+
+def test_bug_numpad_5_with_numlock_off_is_bound_for_windows_too(tk_root, no_dialogs):
+    # The middle numpad key with NumLock off is KP_Begin on X11 but Clear on
+    # Windows; only KP_Begin was bound, so it did nothing on Windows. (A test
+    # display can't send a Windows Clear key, so its binding is checked.)
+    import tkinter as tk
+    from btb.gui_game import KEYPAD_NUMLOCK_OFF, PlayerGUI
+    window = tk.Toplevel(tk_root)
+    gui = PlayerGUI(window)
+    gui.game = game(["5", "6", "7", "8", "9"], ["K"])
+    gui.refresh()
+    assert KEYPAD_NUMLOCK_OFF["5"] == ("KP_Begin", "Clear")
+    assert set(KEYPAD_NUMLOCK_OFF) == set(text.POSITION_KEYS)
+    assert "<Key-Clear>" in window.bind()
+    window.focus_force()
+    _focused_key(window, tk_root, "<KeyPress-KP_Begin>")
+    assert gui.selected == text.POSITION_KEYS["5"]
+
+
+def test_bug_a_tiny_threshold_step_is_refused_before_building_the_list(
+        tk_root, no_dialogs, monkeypatch):
+    # Old: the Optimizer built every threshold first (3 million for a step of
+    # 0.00001, freezing the window) and only then checked the size.
+    import tkinter as tk
+    from btb import gui_sim
+    built = []
+    real = gui_sim.float_range
+    monkeypatch.setattr(gui_sim, "float_range", lambda *a: built.append(a) or real(*a))
+    gui = gui_sim.OptimizerGUI(tk.Toplevel(tk_root))
+    for step in ("0.00001", "1e-320"):
+        gui.vars["step"].set(step)
+        gui.start()
+        assert gui.task is None and "configurations" in gui.message_var.get()
+    assert built == []
+
+
+@pytest.mark.parametrize("step", ["nan", "inf", "-inf"])
+def test_bug_a_step_that_isnt_a_number_gets_a_message(tk_root, no_dialogs, step):
+    # Old: "nan" got past "step <= 0" and crashed inside Tk's callback, so
+    # the run silently never started; "inf" said "no legal configurations".
+    import tkinter as tk
+    from btb.gui_sim import OptimizerGUI
+    gui = OptimizerGUI(tk.Toplevel(tk_root))
+    gui.vars["step"].set(step)
+    gui.start()
+    assert gui.task is None
+    assert "Threshold step must be a number greater than 0" in gui.message_var.get()
+
+
+def test_bug_a_big_seed_shows_the_seed_that_was_played(tk_root, no_dialogs):
+    # Old: 4294967303 was shown (Seed tile, report, export name) while the run
+    # and the exported data used 4294967303 & 0xFFFFFFFF = 7.
+    import tkinter as tk
+    from btb.gui_sim import OptimizerGUI, SimulatorGUI, _parse_seed
+    assert _parse_seed("4294967303") == 7 and _parse_seed("4294967295") == 4294967295
+    sim_page = SimulatorGUI(tk.Toplevel(tk_root))
+    sim_page.sims_var.set("5")
+    sim_page.seed_var.set(str(2**32 + 7))
+    sim_page.cores_var.set("1")
+    sim_page.start()
+    pump(tk_root, until=lambda: sim_page.result is not None)
+    assert sim_page.seed == sim_page.result.seed == 7
+    assert "seed7" in sim_page.export_name()
+    opt = OptimizerGUI(tk.Toplevel(tk_root))
+    opt.vars["seed"].set(str(2**33 + 9))
+    assert opt.validate()[2] == 9
+
+
+def test_bug_settings_say_so_when_the_file_cant_be_written(
+        tk_root, no_dialogs, monkeypatch):
+    # Old: "Saved." even when writing the settings file failed.
+    import tkinter as tk
+    import main
+    from btb import settings
+    from btb.gui_sim import SimulatorGUI
+    monkeypatch.setattr(settings, "save", lambda values: False)
+    app = main.MainApplication(tk.Toplevel(tk_root))
+    page = app.show_page("settings")
+    page.theme_var.set("Slate")
+    page.save()
+    assert page.saved_var.get().startswith("Couldn't save")
+    sim_page = SimulatorGUI(tk.Toplevel(tk_root))
+    sim_page.cores_var.set("1")
+    sim_page._save_cores()
+    assert "Couldn't save the CPU cores choice" in sim_page.message_var.get()
+
+
+def test_bug_clear_is_off_while_a_run_is_going(tk_root, no_dialogs):
+    # Old: Clear stayed clickable and blanked the page while the run went on.
+    import tkinter as tk
+    from btb.gui_sim import SimulatorGUI
+    gui = SimulatorGUI(tk.Toplevel(tk_root))
+    gui.sims_var.set("200000")
+    gui.seed_var.set("1")
+    gui.cores_var.set("1")
+    assert not gui.clear_button.instate(["disabled"])
+    gui.start()
+    assert gui.task is not None and gui.clear_button.instate(["disabled"])
+    gui.stop()
+    pump(tk_root, until=lambda: not gui.task.running, timeout=30)
+    pump(tk_root, until=lambda: not gui.clear_button.instate(["disabled"]))
+
+
+def test_bug_never_more_than_61_helpers_on_windows(monkeypatch):
+    # Windows can't run a process pool with more than 61 helpers; a PC with
+    # more cores crashed the run instead of using 61.
+    import sys
+    from btb import system
+    monkeypatch.setattr(system, "cpu_count", lambda: 128)
+    monkeypatch.setattr(system, "scan", lambda: type("Scan", (), {"workers": 96})())
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert system.resolve_workers("100") == 61
+    assert system.resolve_workers("auto") == 61
+    assert system.resolve_workers("8") == 8
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert system.resolve_workers("100") == 100
+    assert system.resolve_workers("auto") == 96

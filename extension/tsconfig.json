@@ -1,0 +1,43 @@
+{
+  "_header": {
+    "title": "TYPESCRIPT TYPE-CHECK SETTINGS",
+    "file_location": "Beat-the-Box-Card-Game/extension/tsconfig.json",
+    "status": "ACTIVE",
+    "version": "1.1",
+    "last_updated": "2026-10-21",
+    "last_tested": "2026-10-21 (tsc 7.0.2 --noEmit: no errors)",
+    "version_1_1_changes": [
+      "Added this _header block. TypeScript ignores keys it doesn't know."
+    ],
+    "version_1_0_changes": [
+      "New. Strict type checking for src/, with no build output."
+    ],
+    "description": [
+      "Used only by the optional type check (npm run check). Node runs the .ts files",
+      "without it. Only erasable TypeScript is allowed (no enum, namespace or",
+      "parameter properties), so Node and a later build step only strip the types."
+    ],
+    "notes": [
+      "Only src/ is checked. The tests use Node's test runner, whose types would",
+      "need an npm package.",
+      "When the Chrome pages arrive they will need Chrome API types added to \"types\"."
+    ]
+  },
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2024", "dom"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": [],
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}

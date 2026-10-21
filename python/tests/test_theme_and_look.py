@@ -4,9 +4,16 @@ THEME AND NEW-LOOK TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_theme_and_look.py
 Status: ACTIVE
-Version: 1.3
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 308 passed)
+Version: 1.4
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.4 CHANGES (2026-10-21):
+- New: every button style stays readable when hovered or pressed, in
+  every theme, read from the real ttk styles (High Contrast's sidebar
+  buttons were white on white when hovered).
+- The narrow-card odds test checks every width a card can really have
+  and requires a fit, with no "or it's the short form" escape.
 
 VERSION 1.3 CHANGES (2026-10-20):
 - Big joker colours are readable in every theme; the two jokers look
@@ -108,6 +115,25 @@ def test_themes_can_be_picked_by_name_or_number():
 def test_the_remembered_theme_is_used():
     settings.update(theme="Royal Blue")
     assert themes.current().name == "Royal Blue"
+
+
+BUTTON_STYLES = ("TButton", "Accent.TButton", "CallUp.TButton", "CallDown.TButton",
+                 "Nav.TButton", "NavActive.TButton")
+
+
+@pytest.mark.parametrize("name", themes.theme_names())
+def test_every_button_stays_readable_when_hovered_or_pressed(tk_root, name):
+    # Found in review: in High Contrast a hovered sidebar button was white
+    # text on a white button (the plain theme pairs above didn't cover it).
+    from tkinter import ttk
+    themes.set_theme(name, tk_root, save=False)
+    style = ttk.Style(tk_root)
+    for button in BUTTON_STYLES:
+        for state in ([], ["active"], ["pressed"]):
+            fg = style.lookup(button, "foreground", state)
+            bg = style.lookup(button, "background", state)
+            ratio = themes.contrast(fg, bg)
+            assert ratio >= 3.0, f"{name}: {button} {state or 'normal'} is {ratio:.2f}"
 
 
 def test_contrast_extremes():
@@ -332,11 +358,15 @@ def test_cards_left_has_a_simple_table_and_a_cards_view(tk_root, no_dialogs):
 
 def test_the_odds_under_a_narrow_card_are_never_cut_off(tk_root):
     # Seen at 960 x 620: "▲100% ▼100%" was wider than a narrow card, so its
-    # left end was cut off. It now shrinks, then drops the % signs.
+    # left end was cut off. It now shrinks, then drops the % signs. Every
+    # width a card can really have must fit. (The old check let the short
+    # form overflow; at 6 points it is 45 px on Linux, exactly the smallest
+    # card, so a wider font would have been cut off.)
     from btb.widgets import CardView, text_width
     from btb.theme import font
-    for width in (120, 70, 60, 50, 40):
+    smallest = int(CardView.MIN_HEIGHT * CardView.ASPECT)
+    for width in (120, 70, 60, 50, smallest):
         words, spec = CardView.fit_footer(tk_root, "▲100% ▼100%", width)
-        assert text_width(tk_root, spec, words) <= width or words == "▲100 ▼100"
+        assert text_width(tk_root, spec, words) <= width, (width, words, spec)
     assert CardView.fit_footer(tk_root, "▲100% ▼100%", 400)[1] == font("ui", 8)
-    assert CardView.fit_footer(tk_root, "▲100% ▼100%", 30)[0] == "▲100 ▼100"
+    assert CardView.fit_footer(tk_root, "▲100% ▼100%", 20) == ("▲100 ▼100", font("ui", 5))

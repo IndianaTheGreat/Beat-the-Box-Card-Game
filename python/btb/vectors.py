@@ -4,9 +4,16 @@ SHARED TEST VECTORS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/vectors.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-21
-Last Tested: 2026-10-21 (pytest: 314 passed)
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.2 CHANGES (2026-10-21):
+- The file starts with a "_header" key (title, where the file lives,
+  status, which version of this script wrote it, how to rewrite it)
+  instead of the one-line "about" text. JSON can't hold comments, so the
+  header is a key the tests ignore. VECTORS_VERSION must match this
+  docstring's Version (checked in tests/test_vectors.py).
 
 VERSION 1.1 CHANGES (2026-10-21):
 - Closes three gaps found by breaking the TypeScript port on purpose
@@ -51,6 +58,7 @@ KEY FUNCTIONS:
 - render(data) -> the JSON text written to the file
 - write(path) -> rewrites the file, returns its size in bytes
 - VECTORS_PATH -> shared/test_vectors.json in the repo folder
+- VECTORS_VERSION -> this file's Version, written into the file's _header
 
 CLI USAGE:
 ---------
@@ -83,6 +91,7 @@ from .strategy import ThresholdPolicy, play_out
 
 VECTORS_PATH = Path(__file__).resolve().parents[2] / "shared" / "test_vectors.json"
 VECTOR_FORMAT = 1
+VECTORS_VERSION = "1.2"   # this file's Version (written into the _header)
 
 
 # --------------------------------------------------------------------------- #
@@ -813,9 +822,21 @@ def _sweeps() -> Dict[str, Any]:
 
 def build() -> Dict[str, Any]:
     return {
-        "about": ("Known answers from the Python engine (python/btb/vectors.py). "
-                  "The TypeScript engine must give the same ones. Do not edit by "
-                  "hand: run python -m btb.vectors from the python folder."),
+        "_header": {
+            "title": "SHARED TEST VECTORS",
+            "file_location": "Beat-the-Box-Card-Game/shared/test_vectors.json",
+            "status": "GENERATED (do not edit by hand)",
+            "written_by": "python/btb/vectors.py",
+            "writer_version": VECTORS_VERSION,
+            "description": [
+                "Known answers from the Python engine. The TypeScript engine in",
+                "extension/ must give the same ones (node --test from extension/).",
+            ],
+            "how_to_update": [
+                "After a rule change, from the python folder: python -m btb.vectors",
+                "Then run both suites: python -m pytest, and node --test in extension/.",
+            ],
+        },
         "format": VECTOR_FORMAT,
         "rng": _rng(),
         "decks": _decks(),

@@ -4,9 +4,14 @@ SIMULATOR SPEED AND ACCURACY TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_speed_and_accuracy.py
 Status: ACTIVE
-Version: 1.1
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Version: 1.2
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.2 CHANGES (2026-10-21):
+- The tally test made a new random generator for every value, so all 500
+  values were the same number and min, max and mean couldn't disagree.
+  It now draws them from one generator and checks they really vary.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - Run command is now "python -m pytest" (works with the Microsoft Store
@@ -140,7 +145,9 @@ def test_odds_table_matches_single_card_odds():
 # ---------------------------------------------------------------- tallies -- #
 
 def test_tallies_give_the_same_statistics_as_lists():
-    values = [random.Random(1).randint(5, 43) for _ in range(500)]
+    rng = random.Random(1)               # one generator: 500 different draws
+    values = [rng.randint(5, 43) for _ in range(500)]
+    assert len(set(values)) > 20         # a real spread, so min, max and mean differ
     tally = Counter(values)
     assert counter_mean(tally) == pytest.approx(sum(values) / len(values))
     assert (counter_min(tally), counter_max(tally)) == (min(values), max(values))

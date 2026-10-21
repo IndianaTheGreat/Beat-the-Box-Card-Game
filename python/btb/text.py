@@ -4,9 +4,13 @@ IN-APP TEXT AND SHORTCUTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/text.py
 Status: ACTIVE
-Version: 1.4
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 308 passed)
+Version: 1.5
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.5 CHANGES (2026-10-21):
+- How to Play: a recovery earned on the last card can still be used (or
+  skipped) before the game ends, matching the new line in docs/RULES.md.
 
 VERSION 1.4 CHANGES (2026-10-20):
 - Recovery text follows the new rule: a recovered box comes back with the
@@ -187,7 +191,10 @@ later.
 ## Win or Lose
 
 - **Win:** the pile runs out with at least one box alive.
-- **Lose:** all nine boxes fail."""
+- **Lose:** all nine boxes fail.
+
+If the last card earns a recovery, you can still use it (or skip it)
+before the game ends, and the recovered box adds to your boxes left."""
 
 
 # Section names shared with docs/STRATEGY.md (tests/test_docs.py checks both).

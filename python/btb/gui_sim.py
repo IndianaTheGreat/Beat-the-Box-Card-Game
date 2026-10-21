@@ -4,9 +4,21 @@ SIMULATOR AND STRATEGY OPTIMIZER PAGES
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/gui_sim.py
 Status: ACTIVE
-Version: 1.3
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Version: 1.4
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.4 CHANGES (2026-10-21):
+- Optimizer: the number of thresholds is worked out before the list is
+  built, so a tiny step (0.00001) gets the "too many configurations"
+  message at once instead of freezing the window.
+- Optimizer: a step of nan or inf gets a message. Before, nan crashed
+  inside Tk and the run silently never started.
+- A seed of 2^32 or more is kept as the seed actually played (seed & 2^32-1),
+  so the Seed tile, the report and the export name match the export data.
+- Clear is greyed out while a run is going (it blanked a live run).
+- Changing CPU cores says so on the page when the settings file can't be
+  written.
 
 VERSION 1.3 CHANGES (2026-10-20):
 - Advanced tabs are charts instead of plain text. Simulator: four tiles
@@ -78,7 +90,7 @@ DEPENDENCIES:
 ------------
 - btb.engine, btb.sim, btb.strategy, btb.system, btb.export, btb.theme,
   btb.settings, btb.widgets
-- Standard library: tkinter, threading, queue, gc, time, dataclasses,
+- Standard library: tkinter, threading, queue, gc, math, time, dataclasses,
   pathlib, typing
 
 KEY FUNCTIONS:
@@ -112,6 +124,7 @@ NOTES:
 from __future__ import annotations
 
 import gc
+import math
 import queue
 import threading
 import time
@@ -126,7 +139,7 @@ from . import settings as app_settings
 from . import theme as themes
 from .engine import BOX_SIZE, MAX_JOKERS, max_inclusive_calls, new_seed
 from .sim import (
-    MAX_CONFIGS, BatchResult, SweepResult, best_curves, counter_max, counter_mean,
+    MAX_CONFIGS, SEED_MASK, BatchResult, SweepResult, best_curves, counter_max, counter_mean,
     counter_min, distribution, float_range, run_batch, run_sweep, sweep_games, sweep_grid,
 )
 from .strategy import DEFAULT_THRESHOLD
@@ -273,7 +286,9 @@ def _parse_seed(value: str) -> Optional[int]:
     seed = int(value)
     if seed < 0:
         raise ValueError
-    return seed
+    # Runs play seed & SEED_MASK; keep that number, so the Seed tile, the
+    # report and the export name show the seed that was actually played.
+    return seed & SEED_MASK
 
 
 def _plural(n: int, word: str) -> str:
@@ -349,7 +364,8 @@ class _RunnerWindow:
         self.stop_button = ttk.Button(buttons, text="Stop", command=self.stop, state="disabled",
                                       width=-6)
         self.stop_button.pack(side="left", padx=6)
-        ttk.Button(buttons, text="Clear", command=self.clear, width=-6).pack(side="left")
+        self.clear_button = ttk.Button(buttons, text="Clear", command=self.clear, width=-6)
+        self.clear_button.pack(side="left")
 
         self.progress_var = tk.DoubleVar(value=0)
         ttk.Progressbar(left, variable=self.progress_var, maximum=100).pack(
@@ -439,7 +455,9 @@ class _RunnerWindow:
             self.cores_var.set(_cores_label(app_settings.get("cpu_workers")))
 
     def _save_cores(self, _event=None):
-        app_settings.update(cpu_workers=_cores_setting(self.cores_var.get()))
+        if not app_settings.update(cpu_workers=_cores_setting(self.cores_var.get())):
+            self.error("Couldn't save the CPU cores choice: the settings file could not "
+                       "be written. It still applies until you close the app.")
 
     def error(self, message: str):
         """Show a problem on the page, in red, under the progress line."""
@@ -534,6 +552,7 @@ class _RunnerWindow:
         self.clear()
         self.run_button.state(["disabled"])
         self.stop_button.state(["!disabled"])
+        self.clear_button.state(["disabled"])   # Clear mid-run would blank a live run
         self.progress_label.config(text="Checking free CPU and memory...")
         self._started = time.perf_counter()
         setting = _cores_setting(self.cores_var.get())
@@ -578,6 +597,7 @@ class _RunnerWindow:
     def _finish(self):
         self.run_button.state(["!disabled"])
         self.stop_button.state(["disabled"])
+        self.clear_button.state(["!disabled"])
 
     def on_done(self, outcome: RunOutcome):
         self._finish()
@@ -1220,17 +1240,21 @@ class OptimizerGUI(_RunnerWindow):
                             f"({max_inclusive_calls(min(jmax, MAX_JOKERS))}).")
         if not 0 <= tmin <= tmax <= 100:
             problems.append("Threshold must satisfy 0 ≤ min ≤ max ≤ 100.")
-        if step <= 0:
-            problems.append("Threshold step must be greater than 0.")
+        if not (math.isfinite(step) and step > 0):
+            problems.append("Threshold step must be a number greater than 0.")
         if problems:
             self.error("\n".join(problems))
             return None
-        thresholds = float_range(tmin, tmax, step)
-        configs = len(range(jmin, jmax + 1)) * (mmax - mmin + 1) * len(thresholds)
+        # Count before building the list: a tiny step would otherwise build
+        # millions of thresholds (and freeze the window) before this check.
+        ratio = (tmax - tmin) / step                 # inf for a step like 1e-320
+        steps = math.floor(ratio + 1e-9) + 1 if math.isfinite(ratio) else math.inf
+        configs = len(range(jmin, jmax + 1)) * (mmax - mmin + 1) * steps
         if configs > MAX_CONFIGS * 4:  # rough check before building a huge list
             self.error(f"That sweep has over {MAX_CONFIGS:,} configurations. "
                        "Narrow the ranges or use a bigger threshold step.")
             return None
+        thresholds = float_range(tmin, tmax, step)
         grid = sweep_grid((jmin, jmax), (mmin, mmax), thresholds)
         if not grid:
             self.error("Those ranges contain no legal configurations.")

@@ -4,9 +4,15 @@ CARD AND CHART WIDGETS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/widgets.py
 Status: ACTIVE
-Version: 1.3
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 308 passed)
+Version: 1.4
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.4 CHANGES (2026-10-21):
+- CardView.fit_footer: a last 5-point step for the short odds line
+  ("▲100 ▼100"). At 6 points it is exactly as wide as the smallest card
+  on Linux, so a slightly wider font (Windows) would cut it off.
+- Header: DEPENDENCIES lists time and engine's JOKER_KINDS.
 
 VERSION 1.3 CHANGES (2026-10-20):
 - Fixes the freeze seen on Windows ("Not responding", and the test run
@@ -92,8 +98,8 @@ They contain no rules.
 
 DEPENDENCIES:
 ------------
-- btb.engine (Card, SUITS, RANKS), btb.theme, btb.markup
-- Standard library: tkinter, math, typing
+- btb.engine (Card, JOKER_KINDS, SUITS, RANKS), btb.theme, btb.markup
+- Standard library: tkinter, math, time, typing
 
 KEY FUNCTIONS:
 -------------
@@ -354,11 +360,13 @@ class CardView:
     @staticmethod
     def fit_footer(widget: tk.Misc, text: str, width: float) -> Tuple[str, tuple]:
         """The odds line under a card, made to fit the card's width: 8 points,
-        then 7, then 6, then without the % signs ("▲100 ▼100"), so it is
-        never cut off at the left."""
+        then 7, then 6, then without the % signs ("▲100 ▼100") at 6 and then
+        5 points, so it is never cut off at the left. (At 6 points the short
+        form is exactly as wide as the smallest card on Linux, 45 px, so a
+        slightly wider font, as on Windows, needs the 5-point step.)"""
         candidates = [(text, size) for size in (8, 7, 6)]
         if "%" in text:
-            candidates.append((text.replace("%", ""), 6))
+            candidates += [(text.replace("%", ""), size) for size in (6, 5)]
         for words, size in candidates:
             if text_width(widget, font("ui", size), words) <= width:
                 return words, font("ui", size)

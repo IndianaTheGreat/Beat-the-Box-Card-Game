@@ -4,9 +4,14 @@ CPU AND MEMORY SCAN FOR PARALLEL RUNS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/system.py
 Status: ACTIVE
-Version: 1.0
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Version: 1.1
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.1 CHANGES (2026-10-21):
+- resolve_workers never gives more than 61 helpers on Windows
+  (WINDOWS_POOL_LIMIT): a process pool there refuses more, so a PC with
+  over 61 cores crashed the run instead of using 61.
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. Decides how many helper processes the Simulator and Optimizer may
@@ -197,15 +202,25 @@ def scan(sample_s: float = 0.2) -> ResourceScan:
     return ResourceScan(cpus, idle, free, auto_workers(cpus, idle, free))
 
 
+# Windows can't wait on more than 61 helper processes at once, so a process
+# pool there refuses more (Python raises ValueError).
+WINDOWS_POOL_LIMIT = 61
+
+
+def _pool_limit(n: int) -> int:
+    return min(n, WINDOWS_POOL_LIMIT) if sys.platform == "win32" else n
+
+
 def resolve_workers(setting: Union[str, int, None]) -> int:
-    """'auto' (or None) -> scan(); a number -> clamped to 1..cores."""
+    """'auto' (or None) -> scan(); a number -> clamped to 1..cores. Never
+    more than WINDOWS_POOL_LIMIT on Windows."""
     if setting is None or str(setting).lower() == AUTO:
-        return scan().workers
+        return _pool_limit(scan().workers)
     try:
         n = int(setting)
     except (TypeError, ValueError):
-        return scan().workers
-    return max(1, min(n, cpu_count()))
+        return _pool_limit(scan().workers)
+    return _pool_limit(max(1, min(n, cpu_count())))
 
 
 def lower_priority() -> None:

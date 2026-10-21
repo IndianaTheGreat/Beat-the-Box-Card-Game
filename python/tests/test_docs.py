@@ -4,9 +4,15 @@ DOCUMENTATION CONSISTENCY TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_docs.py
 Status: ACTIVE
-Version: 1.3
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 308 passed)
+Version: 1.4
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.4 CHANGES (2026-10-21):
+- The shortcut check is real now: every key must sit in a shortcuts
+  table in README.md and docs/GUIDE.md as `W`, `Ctrl+Z` or `7 8 9`. The
+  old check accepted any capital W, S, D or A anywhere in the file, and
+  never looked at the number keys.
 
 VERSION 1.3 CHANGES (2026-10-20):
 - The two docs/RULES.md contents links are fixed, so every file's
@@ -128,11 +134,24 @@ def test_in_app_text_points_at_the_docs_folder():
     assert "docs/RULES.md" in text.RULES_SUMMARY and "docs/STRATEGY.md" in text.STRATEGY_GUIDE
 
 
+def documented_keys(doc: str) -> set:
+    """Every `key` in the first column of a Markdown table row."""
+    keys = set()
+    for line in doc.splitlines():
+        if line.startswith("|"):
+            first_cell = line.split("|")[1]
+            keys.update(re.findall(r"`([^`]+)`", first_cell))
+    return keys
+
+
 def test_every_shortcut_is_documented():
-    for keys, *_ in text.SHORTCUTS:
-        for key in re.findall(r"Ctrl\+\w|\b[WSDA]\b", keys):
-            assert f"`{key}`" in README or key in README, key
-            assert key in GUIDE, key
+    # Each key must sit in a shortcuts table as `W`, `Ctrl+Z`, `7 8 9`.
+    # (The old check accepted any capital W, S, D or A anywhere in the file.)
+    for name, doc in (("README.md", README), ("docs/GUIDE.md", GUIDE)):
+        documented = documented_keys(doc)
+        for keys, *_ in text.SHORTCUTS:
+            for key in keys.split(" / "):
+                assert key in documented, f"{key} is missing from the {name} shortcuts table"
 
 
 def test_readme_links_both_guides_and_the_guide_covers_every_tool():

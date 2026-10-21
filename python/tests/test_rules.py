@@ -4,9 +4,19 @@ RULES TESTS (docs/RULES.md)
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_rules.py
 Status: ACTIVE
-Version: 1.2
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 308 passed)
+Version: 1.3
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.3 CHANGES (2026-10-21):
+- docs/RULES.md now says a recovery earned on the last card can be used
+  or skipped before the game ends: the last-card test checks the skip too.
+- test_recovery_cannot_be_earned_without_a_success now tests what its
+  name says (an inclusive call that loses earns nothing). Before, it
+  repeated the "a win that isn't an exact match" case.
+- New: losing when the very last card fails the last live box, and a
+  joker's recovery lost when nothing has failed (no banking).
+- Header: these tests need no display (the old note said otherwise).
 
 VERSION 1.2 CHANGES (2026-10-20):
 - New recovery rule: a failed box holds the drawn card that beat it, and
@@ -30,14 +40,12 @@ Includes golden seeded deals cross-checked against a JavaScript shuffle.
 DEPENDENCIES:
 ------------
 - pytest (requirements-dev.txt)
-- tkinter and a display for GUI tests only; they skip otherwise
+- btb.engine; tests/helpers.py
 
 CLI USAGE:
 ---------
 # From the python/ folder
 python -m pytest tests/test_rules.py
-# Headless Linux, to include the GUI tests
-xvfb-run python3 -m pytest
 """
 
 import pytest
@@ -326,11 +334,29 @@ def test_recovery_no_banking_when_nothing_has_failed():
         g.recover(1)
 
 
+@pytest.mark.parametrize("where", ["drawn", "in the box"])
+def test_joker_recovery_is_lost_when_nothing_has_failed(where):
+    # RULES.md: a joker earns a recovery on an inclusive call, and Example 5:
+    # with no failed box it is lost, not saved.
+    box, pile = (["7", "5"], ["🃏", "2"]) if where == "drawn" else (["🃏", "5"], ["9", "2"])
+    g = game(box, pile, inclusive=1)
+    r = g.play(0, HIGHER_EQUAL)
+    assert r.success and r.recovery_earned and r.recovery_lost
+    assert not g.recovery_pending and g.stats["recoveries_lost"] == 1
+    fail(g, 1)  # a later failure does not unlock it
+    with pytest.raises(RulesError):
+        g.recover(1)
+
+
 def test_recovery_cannot_be_earned_without_a_success():
-    g = game(["7", "5"], ["2", "9"], inclusive=1)
-    fail(g, 1)
-    r = g.play(0, HIGHER_EQUAL)  # 9 is not equal, but wins; no recovery
+    g = game(["7", "5"], ["2", "9", "4"], inclusive=2)
+    fail(g, 1)                           # a failed box to bring back
+    r = g.play(0, HIGHER_EQUAL)          # 9 on a 7: wins, but no exact match
     assert r.success and not r.recovery_earned
+    r = g.play(0, HIGHER_EQUAL)          # 4 on the 9: the inclusive call loses
+    assert not r.success and not r.exact_match
+    assert not r.recovery_earned and not g.recovery_pending
+    assert g.inclusive_left == 0         # still spent (RULES.md, Inclusive Calls)
 
 
 def test_recovery_on_the_last_card_is_still_offered():
@@ -340,6 +366,16 @@ def test_recovery_on_the_last_card_is_still_offered():
     assert r.recovery_pending and not r.game_over and g.won
     g.recover(1)
     assert g.is_over and g.won and g.boxes_left == 9
+
+
+def test_recovery_on_the_last_card_can_be_skipped():
+    # docs/RULES.md, Winning & Losing: use it or skip it before the game ends.
+    g = game(["7", "5"], ["2", "7"], inclusive=1)
+    fail(g, 1)
+    g.play(0, LOWER_EQUAL)
+    assert not g.is_over
+    g.skip_recovery()
+    assert g.is_over and g.won and g.boxes_left == 8
 
 
 # -------------------------------------------------------- Winning/losing --- #
@@ -363,6 +399,15 @@ def test_lose_when_all_nine_boxes_fail():
     for pos in range(9):
         r = g.play(pos, HIGHER)
     assert r.game_over and not r.won and g.lost and g.cards_left == 1
+
+
+def test_lose_when_the_last_card_fails_the_last_box():
+    g = game(["A"] * 9, ["2"] * 9)
+    for pos in range(8):
+        g.play(pos, HIGHER)
+    r = g.play(8, HIGHER)                # the very last card
+    assert r.game_over and not r.won and g.lost and not g.won
+    assert g.cards_left == 0 and g.boxes_left == 0
 
 
 def test_no_play_after_game_over():

@@ -4,9 +4,14 @@ ONE-WINDOW APP: SIDEBAR AND PAGES
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/app.py
 Status: ACTIVE
-Version: 1.1
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Version: 1.2
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.2 CHANGES (2026-10-21):
+- Settings no longer says "Saved." when the settings file couldn't be
+  written; it says so instead. The theme is now written in the same save
+  as the other settings, so that one check covers it too.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - Help pages (How to Play, Strategy, Tool Guide, Shortcuts) look like a
@@ -193,7 +198,8 @@ class HomePage:
 
 
 class SettingsPage:
-    """Theme, odds default and CPU cores. Applied and remembered on Save;
+    """Theme, the odds and counts defaults, and CPU cores. Applied and
+    remembered on Save (with a message if the file can't be written);
     Cancel (or Escape) drops unsaved choices."""
 
     def __init__(self, parent: tk.Misc, app: "App"):
@@ -309,9 +315,12 @@ class SettingsPage:
         values = self._values()
         changed = {key: value for key, value in values.items() if value != self.loaded.get(key)}
         if "theme" in changed:
-            themes.set_theme(changed.pop("theme"), self.app.root)
-        if changed:
-            app_settings.update(**changed)
+            # Applied now; written below with the rest, so one check covers it.
+            changed["theme"] = themes.set_theme(changed["theme"], self.app.root, save=False).name
+        if changed and not app_settings.update(**changed):
+            self.saved_var.set("Couldn't save: the settings file could not be written. "
+                               "The changes apply until you close the app.")
+            return
         self.loaded = values
         self.saved_var.set("Saved. The theme applies everywhere now; the odds and counts "
                            "defaults apply to game pages opened from now on.")

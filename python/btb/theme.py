@@ -4,9 +4,16 @@ THEMES AND STYLING
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/theme.py
 Status: ACTIVE
-Version: 1.3
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 308 passed)
+Version: 1.4
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.4 CHANGES (2026-10-21):
+- A hovered sidebar button uses the theme's button text colour, so it
+  reads like a normal button. In High Contrast the hover was white text
+  on a white button; the other themes look the same as before.
+- Header: there is no View > Theme menu any more (Settings only), and
+  repaint recolours help pages and text boxes, not help windows.
 
 VERSION 1.3 CHANGES (2026-10-20):
 - Each theme has joker_big and joker_big_ink: the big joker's green face,
@@ -41,7 +48,7 @@ All colours live here, so the windows contain no colour codes of their
 own. Each theme is one Theme(...) block in THEMES. To change the default,
 edit DEFAULT_THEME (a name or a number from the list). To add a theme,
 copy a block, give it a new name and change the colours; it shows up in
-Settings and View > Theme automatically. The tests check every theme for
+Settings automatically. The tests check every theme for
 readable contrast.
 
     1 Felt Green     2 Royal Blue     3 Casino Red     4 Classic Light
@@ -64,8 +71,8 @@ KEY FUNCTIONS:
 - subscribe(widget, callback) -> callback(theme) on every switch
 - font(kind, size, weight) -> font tuple; kind is ui, card, symbol or mono
 - style_text_widget(widget, theme) -> colours a tk Text or Listbox
-- repaint(text_widgets, windows, theme) -> recolours open help windows and
-  forgets closed ones
+- repaint(text_widgets, windows, theme) -> recolours the help pages and text
+  boxes, and forgets closed ones
 - alive(widget) -> True while a widget still exists
 - contrast(a, b) -> WCAG contrast ratio of two colours (used by tests)
 - mix(a, b, share), hover_shade(bg, text), color_distance(a, b) -> colour
@@ -336,6 +343,10 @@ def _apply_style(root: tk.Misc, t: Theme) -> None:
                   foreground=[("disabled", t.muted)])
     for name in ("Nav.TButton", "NavActive.TButton"):
         style.configure(name, anchor="w", bordercolor=t.panel, relief="flat")
+    # A hovered sidebar button looks like a normal button, text colour too:
+    # in High Contrast the button colour is the text colour (white on white).
+    style.map("Nav.TButton", foreground=[("disabled", t.muted), ("pressed", t.button_text),
+                                         ("active", t.button_text)])
     style.configure("NavHeading.TLabel", background=t.panel, foreground=t.muted,
                     font=font("ui", 9, "bold"))
     style.configure("Sidebar.TFrame", background=t.panel)

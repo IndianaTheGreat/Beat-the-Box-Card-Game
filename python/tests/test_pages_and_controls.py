@@ -4,9 +4,17 @@ ONE-WINDOW APP, CALL BUTTONS AND RESIZING TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_pages_and_controls.py
 Status: ACTIVE
-Version: 1.3
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 311 passed)
+Version: 1.4
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.4 CHANGES (2026-10-21):
+- settle() now runs until no event is waiting AND no timer is scheduled
+  (5 s limit). The old one stopped as soon as nothing was due yet, so a
+  layout that kept resizing itself through after() timers looked settled.
+  The fixed waits before it (after(150) and so on) are gone.
+- Big windows use set_window_size (conftest.py), which lifts Tk's
+  screen-size cap and checks the window really got that size.
 
 VERSION 1.3 CHANGES (2026-10-20):
 - The fit test checks only the flip buttons on show (a 1-joker game hides
@@ -59,8 +67,8 @@ KEY FUNCTIONS:
 - app -> fixture: the one-window app in a fresh Toplevel
 - toplevels(root) -> every extra window open under the root (should be none)
 - press(app, root, key) -> sends a key to the app window
-- settle(root) -> runs the event loop until it is idle; returns how many
-  events that took (a resize loop never gets there)
+- settle(root) -> runs the event loop until no event is waiting and no
+  timer is scheduled; False if that takes over 5 s (a resize loop)
 - reachable(widget, window) -> fully inside the window, or inside a panel
   that scrolls to it
 
@@ -71,6 +79,7 @@ python -m pytest tests/test_pages_and_controls.py
 """
 
 import random
+import time
 
 import pytest
 
@@ -79,7 +88,7 @@ from btb.engine import (
     NO_INCLUSIVE_LEFT, NOTHING_HIGHER, NOTHING_LOWER, OFFER_ORDER, PLAIN_CALLS, RANKS, Card,
     RulesError, call_blocked_reason, odds_against, offered_calls, standard_deck,
 )
-from conftest import pump
+from conftest import pump, set_window_size
 from helpers import card, game
 
 
@@ -390,12 +399,12 @@ def test_advanced_statistics_is_a_tab(tk_root, app, no_dialogs):
 
 def test_cards_resize_with_the_window(tk_root, app, no_dialogs):
     player = app.show_page("player")
-    app.root.geometry("1360x860")
+    set_window_size(app.root, "1360x860")
     pump(tk_root)
     tk_root.after(200)
     pump(tk_root)
     big = player.box_views[0].height
-    app.root.geometry("980x640")
+    set_window_size(app.root, "980x640")
     pump(tk_root)
     tk_root.after(200)
     pump(tk_root)
@@ -558,14 +567,22 @@ def test_use_best_leaves_a_running_simulation_alone(tk_root, app, no_dialogs):
 
 # ------------------------------------------------- fits at small sizes -- #
 
-def settle(root, limit: int = 3000) -> int:
-    """Run the event loop until nothing is left to do; return how many
-    events that took (a layout that keeps resizing itself never gets idle)."""
+def settle(root, timeout: float = 5.0) -> bool:
+    """Run the event loop until nothing is left to do: no event waiting and
+    no timer scheduled. False if that never happens within `timeout`
+    seconds: a layout that keeps re-laying itself out, whether right away
+    or through after() timers (which the old check couldn't see, because
+    it stopped as soon as no event was due yet)."""
     import _tkinter
-    count = 0
-    while count < limit and root.tk.dooneevent(_tkinter.ALL_EVENTS | _tkinter.DONT_WAIT):
-        count += 1
-    return count
+    from conftest import _pending_after
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if root.tk.dooneevent(_tkinter.ALL_EVENTS | _tkinter.DONT_WAIT):
+            continue
+        if not _pending_after(root):
+            return True
+        time.sleep(0.002)
+    return False
 
 
 def reachable(widget, window) -> bool:
@@ -624,7 +641,7 @@ def important_widgets(app, key):
 @pytest.mark.parametrize("size", ["960x620", "1306x678"])
 def test_every_page_fits_and_settles(tk_root, app, no_dialogs, size):
     from btb.gui_game import GameSettings
-    app.root.geometry(size)
+    set_window_size(app.root, size)
     for key in ("home", "player", "assistant", "simulator", "optimizer", "settings",
                 "guide"):
         page = app.show_page(key)
@@ -640,8 +657,7 @@ def test_every_page_fits_and_settles(tk_root, app, no_dialogs, size):
                          if cc.label() == c).invoke()
             page.on_odds_changed()
         pump(tk_root)
-        tk_root.after(150)
-        assert settle(tk_root) < 3000, f"{key} keeps re-laying itself out at {size}"
+        assert settle(tk_root), f"{key} keeps re-laying itself out at {size}"
         for widget in important_widgets(app, key):
             assert reachable(widget, app.root), f"{key}: {widget} is cut off at {size}"
         # Change what the panels hold, then check their scrollbars kept up.
@@ -656,15 +672,13 @@ def test_every_page_fits_and_settles(tk_root, app, no_dialogs, size):
         for change in changes:
             change()
             pump(tk_root)
-            tk_root.after(50)
-            assert settle(tk_root) < 3000
+            assert settle(tk_root), f"{key} keeps re-laying itself out at {size}"
             for frame in scroll_frames(page.frame):
                 assert scroll_matches(frame), f"{key}: a panel's scrollbar is stale at {size}"
         if key in ("simulator", "optimizer"):          # the Advanced tab's charts
             page.notebook.select(page.advanced_tab)
             pump(tk_root)
-            tk_root.after(100)
-            assert settle(tk_root) < 3000, f"{key} Advanced keeps re-laying out at {size}"
+            assert settle(tk_root), f"{key} Advanced keeps re-laying out at {size}"
             charts = page.advanced_charts
             assert charts.winfo_ismapped() and scroll_matches(charts)
             assert reachable(page.adv_charts[0].canvas, app.root)
@@ -678,7 +692,7 @@ def test_the_odds_table_needs_no_sideways_scrollbar_in_a_big_window(tk_root, app
     # side panel's limit, so a sideways scrollbar stayed while the cards had
     # room to spare. The panel now grows (into that spare room) to fit it.
     from btb.gui_game import GameSettings, odds_table_width
-    app.root.geometry(size)
+    set_window_size(app.root, size)
     player = app.show_page("player")
     player.new_game(GameSettings(2, 5))
     player.show_probabilities()

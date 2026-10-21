@@ -4,9 +4,13 @@ HELP PAGES, CHARTS AND TEST SET-UP TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_help_and_charts.py
 Status: ACTIVE
-Version: 1.1
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 308 passed)
+Version: 1.2
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.2 CHANGES (2026-10-21):
+- The count-table test sets its 960 x 620 window with set_window_size
+  (conftest.py), so it checks the size it says it does.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - Tab stops are read with splitlist (Windows returns Tcl objects).
@@ -47,7 +51,7 @@ import pytest
 
 from btb import markup, text
 from btb.sim import best_curves, distribution, run_batch, run_sweep, sweep_grid
-from conftest import pump
+from conftest import pump, set_window_size
 
 
 # ------------------------------------------------------------- the markup -- #
@@ -251,7 +255,7 @@ def test_the_count_table_fits_the_smallest_window(tk_root, no_dialogs):
     import tkinter as tk
     import main
     app = main.MainApplication(tk.Toplevel(tk_root))
-    app.root.geometry("960x620")
+    set_window_size(app.root, "960x620")
     page = app.show_page("strategy")
     pump(tk_root)
     tk_root.after(200)
