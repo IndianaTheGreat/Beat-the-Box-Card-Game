@@ -4,9 +4,14 @@ THEME AND NEW-LOOK TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_theme_and_look.py
 Status: ACTIVE
-Version: 1.2
+Version: 1.3
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Last Tested: 2026-10-20 (pytest: 308 passed)
+
+VERSION 1.3 CHANGES (2026-10-20):
+- Big joker colours are readable in every theme; the two jokers look
+  different; Cards left shows a Simple table and the Cards; the odds
+  under a narrow card always fit.
 
 VERSION 1.2 CHANGES (2026-10-20):
 - Settings save show_counts too, and new pages take both defaults (odds
@@ -67,7 +72,8 @@ HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 READABLE = [
     ("text", "bg", 4.5), ("text", "panel", 4.5), ("muted", "bg", 3.0),
     ("muted", "panel", 3.0), ("red", "card", 4.5), ("black", "card", 4.5),
-    ("joker_ink", "joker", 4.5), ("button_text", "button", 4.5),
+    ("joker_ink", "joker", 4.5), ("joker_big_ink", "joker_big", 4.5),
+    ("button_text", "button", 4.5),
     ("accent_text", "accent", 4.5), ("field_text", "field", 4.5),
     ("banner_text", "good", 3.0), ("banner_text", "bad", 3.0),
     ("select", "bg", 3.0), ("chart", "panel", 3.0), ("card", "back", 3.0),
@@ -275,3 +281,62 @@ def test_settings_window_saves_and_switches_theme(tk_root, no_dialogs):
     assert settings.load() == {"theme": "Slate", "show_odds": True, "show_counts": True,
                                "cpu_workers": 1}
     assert themes.current().name == "Slate"
+
+
+def test_big_and_little_jokers_look_different(tk_root):
+    from btb.engine import Card
+    from btb.widgets import CardView
+    t = themes.current()
+    view = CardView(tk_root, t)
+    shown = {}
+    for kind in ("big", "little"):
+        view.show(Card.joker(kind), "live")
+        canvas = view.canvas
+        texts = [canvas.itemcget(i, "text") for i in canvas.find_all()
+                 if canvas.type(i) == "text"]
+        fills = {canvas.itemcget(i, "fill") for i in canvas.find_all()
+                 if canvas.type(i) == "polygon"}
+        shown[kind] = (texts, fills)
+    assert "BIG" in shown["big"][0] and "LITTLE" in shown["little"][0]
+    assert t.joker_big in shown["big"][1] and t.joker in shown["little"][1]
+    assert themes.color_distance(t.joker_big_ink, t.joker_ink) > 150   # green vs purple
+
+
+def test_cards_left_has_a_simple_table_and_a_cards_view(tk_root, no_dialogs):
+    from btb.gui_game import GameSettings, PlayerGUI
+    gui = PlayerGUI(tk.Toplevel(tk_root))
+    gui.new_game(GameSettings(2, 5))
+    gui.show_remaining_cards()
+    pump(tk_root)
+    view = gui.cards_view
+    assert view.mode == "simple" and gui.cards_mode.get() == "simple"
+
+    def texts():
+        return [view.canvas.itemcget(i, "text") for i in view.canvas.find_all()
+                if view.canvas.type(i) == "text"]
+
+    left = view.left_by_rank()
+    assert sum(left.values()) == gui.game.cards_left == 45
+    assert "Ace" in texts() and "Jokers" in texts() and str(gui.game.cards_left) in texts()
+    gui.cards_mode_buttons[1].invoke()                         # Cards
+    assert view.mode == "cards"
+    labels = texts()
+    assert labels.count("A") == 4 and labels.count("♠") == 13  # 4 suit rows of 13
+    assert "★ Big Joker" in labels and "★ Little Joker" in labels
+    first = int(float(view.canvas.cget("height")))
+    gui.cards_mode_buttons[0].invoke()
+    assert view.mode == "simple" and int(float(view.canvas.cget("height"))) != first
+    themes.set_theme("Midnight", tk_root, save=False)          # repaints in the new theme
+    assert view.canvas.cget("background") == themes.get("Midnight").panel
+
+
+def test_the_odds_under_a_narrow_card_are_never_cut_off(tk_root):
+    # Seen at 960 x 620: "▲100% ▼100%" was wider than a narrow card, so its
+    # left end was cut off. It now shrinks, then drops the % signs.
+    from btb.widgets import CardView, text_width
+    from btb.theme import font
+    for width in (120, 70, 60, 50, 40):
+        words, spec = CardView.fit_footer(tk_root, "▲100% ▼100%", width)
+        assert text_width(tk_root, spec, words) <= width or words == "▲100 ▼100"
+    assert CardView.fit_footer(tk_root, "▲100% ▼100%", 400)[1] == font("ui", 8)
+    assert CardView.fit_footer(tk_root, "▲100% ▼100%", 30)[0] == "▲100 ▼100"

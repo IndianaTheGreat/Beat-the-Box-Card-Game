@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🂠 Beat the Box — Official Rules
+# 🂠 Beat the Box: Official Rules
 
 **A solitaire card game of odds, nerve, and second chances.**
 
@@ -9,7 +9,7 @@
 </div>
 
 > [!NOTE]
-> This file is the **single source of truth** for the rules. Every part of the project — the Python suite, the TypeScript engine, the Chrome extension, and the simulator — must play exactly as described here. If the code and this file disagree, the code has a bug.
+> This file is the **single source of truth** for the rules. Every part of the project (the Python suite, the TypeScript engine, the Chrome extension, and the simulator) must play exactly as described here. If the code and this file disagree, the code has a bug.
 
 ---
 
@@ -19,9 +19,9 @@
 2. [Setup](#-setup)
 3. [Card Ranks](#-card-ranks)
 4. [Taking a Turn](#-taking-a-turn)
-5. [Inclusive Calls](#-inclusive-calls)
+5. [Inclusive Calls](#%EF%B8%8F-inclusive-calls)
 6. [Jokers](#-jokers)
-7. [Recovering a Failed Box](#-recovering-a-failed-box)
+7. [Recovering a Failed Box](#%EF%B8%8F-recovering-a-failed-box)
 8. [Winning & Losing](#-winning--losing)
 9. [Game Settings](#%EF%B8%8F-game-settings)
 10. [Card Counting](#-card-counting)
@@ -83,7 +83,7 @@ Jokers have no rank. They are wild (see [Jokers](#-jokers)).
 | Result | What happens |
 |---|---|
 | ✅ **Correct** | The drawn card is placed on the box, replacing the old card. Play on. |
-| ❌ **Wrong** | The box **fails**. It can't be played again unless it is [recovered](#-recovering-a-failed-box). |
+| ❌ **Wrong** | The box **fails**. It can't be played again unless it is [recovered](#%EF%B8%8F-recovering-a-failed-box). |
 
 > [!IMPORTANT]
 > On a plain **Higher** or **Lower** call, a card of the **same rank is a loss**. An `8` drawn on an `8` after calling Higher fails the box.
@@ -92,7 +92,7 @@ Jokers have no rank. They are wild (see [Jokers](#-jokers)).
 
 ## ⚖️ Inclusive Calls
 
-Inclusive calls — **Higher or Equal** and **Lower or Equal** — are your limited safety net.
+Inclusive calls (**Higher or Equal** and **Lower or Equal**) are your limited safety net.
 
 - You start the game with a set number of them (see [Game Settings](#%EF%B8%8F-game-settings)).
 - Each one is spent **when you make the call**, win or lose.
@@ -125,14 +125,16 @@ When you earn a recovery:
 
 1. The play resolves first. You see the drawn card and it lands on the box.
 2. **Then** you choose **one** failed box to bring back.
-3. The recovered box returns with **the card it failed on**.
+3. The recovered box returns with **the card that beat it** (see *How a box fails* below).
 4. You may also skip the recovery.
+
+**How a box fails.** When a call is wrong, the drawn card goes on top of the box card, and that box's stack is turned face down. A recovery turns the stack back over, so the card on top is the one that beat it. Say you call **Lower** on a `Q` and draw an `A`: the box fails with the `A` on top. If you recover that box later, it comes back as the `A`, not the `Q`.
 
 | Rule | Detail |
 |---|---|
 | 🔢 **One per match** | Each exact match or joker earns exactly one recovery. |
 | 🚫 **No banking** | If you have **no failed boxes** when you earn a recovery, it is **lost**. Recoveries can't be saved for later. |
-| 👁️ **Show failed cards** | If this setting is on, each failed box shows the card it failed on, so you can pick the best one to bring back. A box holding a `2` or an `A` is the easiest to play next. |
+| 👁️ **Show failed cards** | If this setting is on, each failed box shows the card on top of its stack (the card that beat it), so you can pick the best one to bring back. A box that would come back as a `2` or an `A` is the easiest to play next. |
 
 ---
 
@@ -163,9 +165,9 @@ The game shows three running counts to help you judge what's left in the draw pi
 
 | Rank | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | J | Q | K | A | 🃏 |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| **Method 1** — Basic | −1 | −1 | −1 | −1 | −1 | −1 | 0 | +1 | +1 | +1 | +1 | +1 | +1 | 0 |
-| **Method 2** — Weighted | −2 | −2 | −2 | −1 | −1 | −1 | 0 | +1 | +1 | +1 | +2 | +2 | +2 | 0 |
-| **Method 3** — Advanced | −3 | −3 | −2 | −2 | −1 | −1 | 0 | +1 | +1 | +2 | +2 | +3 | +3 | 0 |
+| **Method 1:** Basic | −1 | −1 | −1 | −1 | −1 | −1 | 0 | +1 | +1 | +1 | +1 | +1 | +1 | 0 |
+| **Method 2:** Weighted | −2 | −2 | −2 | −1 | −1 | −1 | 0 | +1 | +1 | +1 | +2 | +2 | +2 | 0 |
+| **Method 3:** Advanced | −3 | −3 | −2 | −2 | −1 | −1 | 0 | +1 | +1 | +2 | +2 | +3 | +3 | 0 |
 
 - A **positive** count means many high cards have been seen, so **more low cards remain**. Lean **Lower**.
 - A **negative** count means **more high cards remain**. Lean **Higher**.
@@ -176,7 +178,7 @@ The game shows three running counts to help you judge what's left in the draw pi
 ## 📖 Worked Examples
 
 <details>
-<summary><b>Example 1 — A plain call</b></summary>
+<summary><b>Example 1: A plain call</b></summary>
 
 Box has a `4♣`. You call **Higher**. The draw is `J♥`.
 ✅ Correct. The `J♥` now sits on that box.
@@ -184,23 +186,23 @@ Box has a `4♣`. You call **Higher**. The draw is `J♥`.
 </details>
 
 <details>
-<summary><b>Example 2 — A tie on a plain call</b></summary>
+<summary><b>Example 2: A tie on a plain call</b></summary>
 
 Box has an `8♦`. You call **Lower**. The draw is `8♠`.
-❌ Same rank on a plain call is a loss. The box fails, holding the `8♦`.
+❌ Same rank on a plain call is a loss. The `8♠` goes on top of the `8♦` and the box fails. If it is recovered later, it comes back as the `8♠`.
 
 </details>
 
 <details>
-<summary><b>Example 3 — Inclusive exact match → recovery</b></summary>
+<summary><b>Example 3: Inclusive exact match → recovery</b></summary>
 
-You have one failed box, holding a `K♠`. Another box has a `7♥`. You spend an inclusive call: **Lower or Equal**. The draw is `7♣`.
+You have one failed box, with a `K♠` on top (the card that beat it). Another box has a `7♥`. You spend an inclusive call: **Lower or Equal**. The draw is `7♣`.
 ✅ Correct, and an exact match. The `7♣` lands on the box. 🎁 You recover the failed box, and it comes back as `K♠`. Your next call on it is an easy **Lower**.
 
 </details>
 
 <details>
-<summary><b>Example 4 — Joker in the box</b></summary>
+<summary><b>Example 4: Joker in the box</b></summary>
 
 A `🃏` is sitting in the box. You spend an inclusive call on it. The draw is `5♦`.
 ✅ Guaranteed success. The `5♦` replaces the joker. 🎁 You earn a recovery.
@@ -208,7 +210,7 @@ A `🃏` is sitting in the box. You spend an inclusive call on it. The draw is `
 </details>
 
 <details>
-<summary><b>Example 5 — Recovery with nothing to recover</b></summary>
+<summary><b>Example 5: Recovery with nothing to recover</b></summary>
 
 No boxes have failed yet. You make an inclusive call and draw an exact match.
 ✅ Correct. The recovery is **lost**, because there's nothing to bring back and recoveries can't be saved.
@@ -221,8 +223,8 @@ No boxes have failed yet. You make an inclusive call and draw an exact match.
 
 ```
 CALL            WINS ON          COST       BONUS
-Higher          >                free       —
-Lower           <                free       —
+Higher          >                free       -
+Lower           <                free       -
 Higher/Equal    ≥                1 incl.    exact match → recovery
 Lower/Equal     ≤                1 incl.    exact match → recovery
 
@@ -234,6 +236,6 @@ LOSE                          all 9 boxes failed
 
 <div align="center">
 
-*Good luck — and beat the box.* 🂠
+*Good luck, and beat the box.* 🂠
 
 </div>

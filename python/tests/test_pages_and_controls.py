@@ -4,9 +4,14 @@ ONE-WINDOW APP, CALL BUTTONS AND RESIZING TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_pages_and_controls.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Last Tested: 2026-10-20 (pytest: 308 passed)
+
+VERSION 1.2 CHANGES (2026-10-20):
+- The toolbar test checks the rule (short labels exactly when the long
+  ones don't fit) instead of assuming fonts: Windows fonts are narrower.
+- Clicking the Cards left view keeps the shortcuts.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - Calls offered in the new button order (▲= ▲ ▼ ▼=; keys D W S A).
@@ -247,18 +252,28 @@ def test_picking_a_hidden_view_turns_its_switch_on(tk_root, app, no_dialogs):
 
 
 def test_toolbar_switches_have_short_labels_when_narrow(tk_root, app, no_dialogs):
+    # Short labels ("Odds", "Counts") exactly when the long ones don't fit.
+    # Fonts differ by system (Segoe UI on Windows is narrower), so the test
+    # checks the rule rather than assuming which labels fit at 960 px.
     player = app.show_page("player")
     app.root.geometry("960x620")
     pump(tk_root)
     tk_root.after(100)
     pump(tk_root)
+    need = player.heading_label.winfo_reqwidth() + sum(
+        width for *_rest, width in player._toolbar_labels) + 40
+    short = player.toolbar.winfo_width() < need
     labels = {str(player.odds_check.cget("text")), str(player.counts_check.cget("text"))}
-    assert labels == {"Odds", "Counts"}                    # too narrow for the hints
-    app.root.geometry("1600x700")
-    pump(tk_root)
-    tk_root.after(100)
-    pump(tk_root)
+    assert labels == ({"Odds", "Counts"} if short else
+                      {"Show odds (Ctrl+O)", "Show counts (Ctrl+K)"})
+    real_width = player.toolbar.winfo_width
+    player.toolbar.winfo_width = lambda: 300                  # a toolbar too narrow for hints
+    player._fit_toolbar()
+    assert str(player.counts_check.cget("text")) == "Counts"
+    player.toolbar.winfo_width = lambda: 3000                 # and one with room to spare
+    player._fit_toolbar()
     assert str(player.counts_check.cget("text")) == "Show counts (Ctrl+K)"
+    player.toolbar.winfo_width = real_width
 
 
 def test_pages_keep_their_state_and_only_the_page_showing_takes_keys(tk_root, app, no_dialogs):
@@ -414,11 +429,11 @@ def test_clicking_the_cards_left_text_keeps_the_shortcuts(tk_root, app, no_dialo
     player = app.show_page("player")
     player.new_game(GameSettings(0, 5))
     player.show_remaining_cards()
-    player.cards_text.focus_force()                          # what a click does
+    player.cards_view.canvas.focus_force()                   # what a click does
     pump(tk_root)
-    player.cards_text.event_generate("<Key-5>", when="now")
+    player.cards_view.canvas.event_generate("<Key-5>", when="now")
     assert player.selected == 4
-    player.cards_text.event_generate("<Control-h>", when="now")
+    player.cards_view.canvas.event_generate("<Control-h>", when="now")
     assert app.current == "shortcuts"
 
 

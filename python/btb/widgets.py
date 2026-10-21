@@ -4,9 +4,29 @@ CARD AND CHART WIDGETS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/widgets.py
 Status: ACTIVE
-Version: 1.2
+Version: 1.3
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Last Tested: 2026-10-20 (pytest: 308 passed)
+
+VERSION 1.3 CHANGES (2026-10-20):
+- Fixes the freeze seen on Windows ("Not responding", and the test run
+  hanging): before the window was drawn, CardGrid sized its font from a
+  panel that was only as wide as the grid itself, so it flipped between
+  two sizes forever. It now sizes itself from the width its ScrollFrame
+  was set to. New FlipGuard stops any layout that resizes itself more
+  than 6 times in half a second (CardGrid, StatTile, flow_row).
+- Big and little jokers: green and purple faces with BIG / LITTLE JOKER,
+  their own buttons in CardGrid (keyed by Card.key()); card_name() gives
+  their names. CardView redraws when one joker replaces the other.
+- New CardsLeftView: the cards left in the pile as a Simple table (rank,
+  number left, a dot per card) or as Cards (four suit rows, played cards
+  faded).
+- The odds line under a card shrinks (8, 7, 6 points, then without %) so
+  it is never cut off under a narrow card.
+- CardGrid removes its resize handler from the side panel when it is
+  destroyed (a rebuilt picker left dead handlers behind), reads its
+  panel's padding correctly, and can hide the jokers a game doesn't have
+  (show_jokers).
 
 VERSION 1.2 CHANGES (2026-10-20):
 - New DocView: a help page drawn as a formatted document from the markup
@@ -87,6 +107,8 @@ KEY FUNCTIONS:
 - LineChart.draw_series(labels, series, title)
 - nice_ticks(low, high, count) -> round axis values
 - DocView(parent, source).set_source / plain / copy / render
+- CardsLeftView(parent, theme).show(pile, jokers, mode) -> Simple or Cards
+- FlipGuard().allow() -> False once a layout keeps resizing itself
 - CardGrid(parent, theme, on_pick, jokers).set_available / set_selected /
   fit(width) / beside_jokers(widget)
 - ScrollFrame(parent, width).body / set_width(width) / update_layout()
@@ -114,13 +136,14 @@ NOTES:
 from __future__ import annotations
 
 import math
+import time
 import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from . import markup
 from . import theme as themes
-from .engine import RANKS, SUITS, Card
+from .engine import JOKER_KINDS, RANKS, SUITS, Card
 from .theme import Theme, font
 
 RED_SUITS = ("♥", "♦")
@@ -128,13 +151,20 @@ CARD_STATES = ("empty", "live", "selected", "failed", "recoverable")
 
 
 def card_name(card: Card) -> str:
-    """Readable label: "A♥", or "Joker" instead of the emoji."""
-    return "Joker" if card.is_joker else card.label()
+    """Readable label: "A♥", or "Big Joker" / "Little Joker" / "Joker"."""
+    return card.name
+
+
+def joker_colors(card: Card, t: Theme) -> Tuple[str, str]:
+    """(face, ink) for a joker: green for the big joker, purple otherwise."""
+    if card.kind == "big":
+        return t.joker_big, t.joker_big_ink
+    return t.joker, t.joker_ink
 
 
 def suit_color(card: Card, t: Theme) -> str:
     if card.is_joker:
-        return t.joker_ink
+        return joker_colors(card, t)[1]
     return t.red if card.suit in RED_SUITS else t.black
 
 
@@ -224,7 +254,11 @@ class CardView:
         if state not in CARD_STATES:
             raise ValueError(f"unknown card state {state!r}")
         new = (card, state, ghost, footer_left, footer_right)
-        if new == (self.card, self.state, self.ghost, self.footer_left, self.footer_right):
+        kinds = (getattr(card, "kind", ""), getattr(ghost, "kind", ""))
+        old_kinds = (getattr(self.card, "kind", ""), getattr(self.ghost, "kind", ""))
+        # Two jokers are equal in play, so compare their kinds too (big/little).
+        if (new == (self.card, self.state, self.ghost, self.footer_left, self.footer_right)
+                and kinds == old_kinds):
             return
         self.card, self.state, self.ghost, self.footer_left, self.footer_right = new
         self.redraw()
@@ -307,15 +341,28 @@ class CardView:
                              fill="", outline=t.select, width=2)
 
         fy = y2 + m + self.FOOTER / 2 - 2
-        key_font, odds_font = font("ui", 9, "bold"), font("ui", 8)
-        room = (x2 - x1) - text_width(c, odds_font, self.footer_right) - 6
+        key_font = font("ui", 9, "bold")
+        odds_text, odds_font = self.fit_footer(c, self.footer_right, x2 - x1)
+        room = (x2 - x1) - text_width(c, odds_font, odds_text) - 6
         if self.footer_left and text_width(c, key_font, self.footer_left) <= room:
             c.create_text(x1 + 2, fy, text=self.footer_left, anchor="w",
                           font=key_font, fill=t.muted)
-        if self.footer_right:
+        if odds_text:
             color = t.recover if self.state == "recoverable" else t.text
-            c.create_text(x2, fy, text=self.footer_right, anchor="e",
-                          font=odds_font, fill=color)
+            c.create_text(x2, fy, text=odds_text, anchor="e", font=odds_font, fill=color)
+
+    @staticmethod
+    def fit_footer(widget: tk.Misc, text: str, width: float) -> Tuple[str, tuple]:
+        """The odds line under a card, made to fit the card's width: 8 points,
+        then 7, then 6, then without the % signs ("▲100 ▼100"), so it is
+        never cut off at the left."""
+        candidates = [(text, size) for size in (8, 7, 6)]
+        if "%" in text:
+            candidates.append((text.replace("%", ""), 6))
+        for words, size in candidates:
+            if text_width(widget, font("ui", size), words) <= width:
+                return words, font("ui", size)
+        return candidates[-1][0], font("ui", candidates[-1][1])
 
     def _face(self, x1: float, y1: float, x2: float, y2: float, card: Card,
               radius: float) -> None:
@@ -324,15 +371,20 @@ class CardView:
         h = self.height
         corner_x, rank_y, suit_y = h * 0.11, h * 0.12, h * 0.26
         if card.is_joker:
-            rounded_rect(c, x1, y1, x2, y2, radius, fill=t.joker, outline=t.card_edge, width=1)
-            c.create_text(cx, cy - h * 0.08, text="★", font=font("symbol", self._size(0.28)),
-                          fill=t.joker_ink)
-            c.create_text(cx, cy + h * 0.2, text="JOKER", font=font("ui", self._size(0.08), "bold"),
-                          fill=t.joker_ink)
+            face, ink = joker_colors(card, t)
+            rounded_rect(c, x1, y1, x2, y2, radius, fill=face, outline=t.card_edge, width=1)
+            star = self._size(0.34 if card.kind == "big" else 0.24)    # big joker, bigger star
+            c.create_text(cx, cy - h * 0.1, text="★", font=font("symbol", star), fill=ink)
+            words = {"big": "BIG", "little": "LITTLE"}.get(card.kind)
+            if words:
+                c.create_text(cx, cy + h * 0.15, text=words,
+                              font=font("ui", self._size(0.075), "bold"), fill=ink)
+            c.create_text(cx, cy + h * (0.26 if words else 0.2), text="JOKER",
+                          font=font("ui", self._size(0.075), "bold"), fill=ink)
             c.create_text(x1 + corner_x, y1 + rank_y, text="★",
-                          font=font("symbol", self._size(0.085)), fill=t.joker_ink)
+                          font=font("symbol", self._size(0.085)), fill=ink)
             _text(c, x2 - corner_x, y2 - rank_y, True, text="★",
-                  font=font("symbol", self._size(0.085)), fill=t.joker_ink)
+                  font=font("symbol", self._size(0.085)), fill=ink)
             return
         rounded_rect(c, x1, y1, x2, y2, radius, fill=t.card, outline=t.card_edge, width=1)
         color = suit_color(card, t)
@@ -401,6 +453,7 @@ class StatTile(ttk.Frame):
         self.caption = ttk.Label(self, text=caption, style="PanelMuted.TLabel", width=1)
         self.caption.pack(anchor="w", fill="x")
         self.size = self.SIZES[0]
+        self._guard = FlipGuard()
         self.bind("<Configure>", self.fit)
         self._trace = variable.trace_add("write", self.fit)
         self.bind("<Destroy>", self._forget_trace)
@@ -428,7 +481,7 @@ class StatTile(ttk.Frame):
         wrap = max(40, room)
         value_wrap = 0 if fits else wrap                 # wrap only if even 9pt is too wide
         changed = False
-        if size != self.size:
+        if size != self.size and self._guard.allow():
             self.size = size
             self.value.configure(font=font("ui", size, "bold"))
             changed = True
@@ -1028,6 +1081,164 @@ def _is_number(words: str) -> bool:
     return bool(words) and all(ch in "0123456789+-−.%, " for ch in words)
 
 
+# ---------------------------------------------------------- CardsLeftView -- #
+
+class CardsLeftView:
+    """The cards still in the draw pile, drawn on a canvas, in two modes:
+
+      simple  one line per rank (A down to 2, then jokers): the rank, how
+              many are left, and four pips (filled = still in the pile)
+      cards   the deck laid out as four suit rows (A to 2) plus the jokers,
+              as small cards; a card no longer in the pile is drawn faded
+
+    The canvas takes the width it is given and sets its own height."""
+
+    ORDER = tuple(reversed(RANKS))          # A K Q ... 2
+
+    def __init__(self, parent: tk.Misc, theme: Theme):
+        self.theme = theme
+        self.mode = "simple"
+        self.pile: List[Card] = []
+        self.jokers = 0
+        self.width = 300
+        self.canvas = tk.Canvas(parent, width=self.width, height=40, highlightthickness=0,
+                                borderwidth=0, background=theme.panel)
+        self.canvas.bind("<Configure>", self._resized)
+
+    def pack(self, **options) -> None:
+        self.canvas.pack(**options)
+
+    def _resized(self, event) -> None:
+        if abs(event.width - self.width) > 2:
+            self.width = event.width
+            self.redraw()
+
+    def show(self, pile: Sequence[Card], jokers: int, mode: Optional[str] = None) -> None:
+        """pile: the cards still in the draw pile; jokers: how many the game has."""
+        self.pile, self.jokers = list(pile), jokers
+        if mode:
+            self.mode = mode
+        self.redraw()
+
+    def set_theme(self, theme: Theme) -> None:
+        self.theme = theme
+        self.redraw()
+
+    def left_by_rank(self) -> Dict[int, int]:
+        counts = {rank: 0 for rank in self.ORDER}
+        counts[0] = 0
+        for card in self.pile:
+            counts[card.rank] += 1
+        return counts
+
+    def redraw(self) -> None:
+        c, t = self.canvas, self.theme
+        c.delete("all")
+        c.configure(background=t.panel)
+        height = self._simple() if self.mode == "simple" else self._cards()
+        if int(float(c.cget("height"))) != height:
+            c.configure(height=height)
+            notify_resized(c)
+
+    def _simple(self) -> int:
+        """A small table: rank, number left, and pips (one per card of it)."""
+        c, t = self.canvas, self.theme
+        counts = self.left_by_rank()
+        name_font, count_font = font("ui", 10), font("ui", 10, "bold")
+        row, top = 22, 24
+        c.create_text(4, 10, text="Rank", anchor="w", font=font("ui", 9, "bold"), fill=t.muted)
+        c.create_text(110, 10, text="Left", anchor="e", font=font("ui", 9, "bold"),
+                      fill=t.muted)
+        ranks = list(self.ORDER) + ([0] if self.jokers else [])
+        for i, rank in enumerate(ranks):
+            y = top + i * row + row / 2
+            if i % 2:
+                c.create_rectangle(0, y - row / 2, self.width, y + row / 2, outline="",
+                                   fill=themes.mix(t.panel, t.text, 0.05))
+            name = {0: "Jokers", 11: "Jack", 12: "Queen", 13: "King", 14: "Ace"}.get(
+                rank, str(rank))
+            left = counts[rank]
+            whole = self.jokers if rank == 0 else 4
+            c.create_text(4, y, text=name, anchor="w", font=name_font,
+                          fill=t.text if left else t.muted)
+            c.create_text(110, y, text=str(left), anchor="e", font=count_font,
+                          fill=t.text if left else t.muted)
+            for pip in range(whole):
+                x = 128 + pip * 18
+                filled = pip < left
+                c.create_oval(x, y - 6, x + 12, y + 6, outline=t.chart if filled else t.edge,
+                              fill=t.chart if filled else "", width=1.5)
+        total = len(self.pile)
+        y = top + len(ranks) * row + 14
+        c.create_line(4, y - 10, self.width - 4, y - 10, fill=t.edge)
+        c.create_text(4, y + 2, text="Total", anchor="w", font=count_font, fill=t.text)
+        c.create_text(110, y + 2, text=str(total), anchor="e", font=count_font, fill=t.text)
+        return int(y + 16)
+
+    def _cards(self) -> int:
+        """Four suit rows of small cards (A to 2), then the jokers."""
+        c, t = self.canvas, self.theme
+        here = {(card.rank, card.suit) for card in self.pile if not card.is_joker}
+        kinds_here = [card.kind for card in self.pile if card.is_joker]
+        gap = 3
+        w = max(16.0, (self.width - 4 - gap * 12) / 13)
+        h = w * 1.35
+        size = max(6, min(11, round(w * 0.36)))
+        faded = themes.mix(t.panel, t.card, 0.18)
+        y = 2
+        for suit in SUITS:
+            for i, rank in enumerate(self.ORDER):
+                x = 2 + i * (w + gap)
+                card = Card(rank, suit)
+                if (rank, suit) in here:
+                    rounded_rect(c, x, y, x + w, y + h, 4, fill=t.card, outline=t.card_edge)
+                    color = suit_color(card, t)
+                else:
+                    rounded_rect(c, x, y, x + w, y + h, 4, fill=faded, outline=t.edge)
+                    color = themes.mix(faded, suit_color(card, t), 0.35)
+                c.create_text(x + w / 2, y + h * 0.34, text=card.rank_label,
+                              font=font("card", size, "bold"), fill=color)
+                c.create_text(x + w / 2, y + h * 0.7, text=suit, font=font("symbol", size),
+                              fill=color)
+            y += h + gap + 1
+        for i, kind in enumerate(JOKER_KINDS[:self.jokers]):
+            joker = Card.joker(kind)
+            x, jw = 2 + i * (3 * w + 3 * gap), 3 * w + 2 * gap
+            face, ink = joker_colors(joker, t)
+            if kind not in kinds_here:
+                face, ink = faded, themes.mix(faded, ink, 0.6)
+            rounded_rect(c, x, y, x + jw, y + h * 0.7, 4, fill=face,
+                         outline=t.card_edge if kind in kinds_here else t.edge)
+            c.create_text(x + jw / 2, y + h * 0.35, text=f"★ {joker.name}",
+                          font=font("ui", max(6, size - 1), "bold"), fill=ink)
+        if self.jokers:
+            y += h * 0.7 + gap
+        return int(y + 2)
+
+
+# -------------------------------------------------------------- FlipGuard -- #
+
+class FlipGuard:
+    """A backstop for layouts that resize themselves: allow() is False once
+    something has changed size MAX_CHANGES times within WINDOW seconds, so a
+    feedback loop stops after a few rounds instead of freezing the window.
+    A person resizing the window never changes a size that often."""
+
+    MAX_CHANGES = 6
+    WINDOW = 0.5
+
+    def __init__(self) -> None:
+        self.changes: List[float] = []
+
+    def allow(self) -> bool:
+        now = time.monotonic()
+        self.changes = [t for t in self.changes if now - t < self.WINDOW]
+        if len(self.changes) >= self.MAX_CHANGES:
+            return False
+        self.changes.append(now)
+        return True
+
+
 # --------------------------------------------------------------- CardGrid -- #
 
 class CardGrid(ttk.Frame):
@@ -1053,25 +1264,71 @@ class CardGrid(ttk.Frame):
         for row, suit in enumerate(SUITS):
             for col, rank in enumerate(reversed(RANKS)):  # A K Q ... 2
                 self._add(Card(rank, suit), row, col)
-        for i in range(jokers):
-            self._add(Card.joker(), len(SUITS), i * 2, columnspan=2)
+        for i, kind in enumerate(JOKER_KINDS[:jokers]):    # a big and a little joker
+            self._add(Card.joker(kind), len(SUITS), i * 3, columnspan=3)
         self.set_theme(theme)
+        self._guard = FlipGuard()
         parent.bind("<Configure>", lambda e: self.fit(self._room()), add="+")
+        scroll = self._scroll_frame()
+        if scroll is not None:     # the panel's set width changed: fit again
+            # The ScrollFrame outlives this grid (the Assistant rebuilds its
+            # picker every game), so the binding goes when the grid does.
+            binding = scroll.canvas.bind("<Configure>", lambda e: self.fit(self._room()),
+                                         add="+")
+            self.bind("<Destroy>", lambda e, c=scroll.canvas, b=binding:
+                      self._unbind(e, c, b), add="+")
+
+    def _unbind(self, event, canvas: tk.Misc, binding: str) -> None:
+        """Remove only this grid's <Configure> script from the canvas."""
+        if event.widget is not self:
+            return
+        try:
+            scripts = canvas.bind("<Configure>").split("\n")
+            kept = [line for line in scripts if binding not in line]
+            canvas.bind("<Configure>", "\n".join(kept))
+            canvas.deletecommand(binding)
+        except tk.TclError:
+            pass
+
+    def _scroll_frame(self) -> Optional["ScrollFrame"]:
+        widget = self.master
+        while widget is not None:
+            if isinstance(widget, ScrollFrame):
+                return widget
+            widget = widget.master
+        return None
 
     def _room(self) -> int:
-        """Width inside the parent panel (its width less its padding)."""
+        """Width the grid may use: the parent panel's width less its padding.
+
+        Inside a ScrollFrame, the panel's width is taken from the width the
+        ScrollFrame was SET to, not from the panel itself. Before the window
+        is drawn, the panel is only as wide as what it holds, so measuring it
+        would make the grid size itself to its own font: big font, wide
+        panel, small font, narrow panel, big font... forever (the window then
+        never appears and Windows says "Not responding")."""
         master = self.master
         try:
-            pad = [int(float(p)) for p in str(master.cget("padding")).split()]
+            pad = [int(float(str(p))) for p in master.tk.splitlist(master.cget("padding"))]
         except (tk.TclError, ValueError):
             pad = []
         left = pad[0] if pad else 0
         right = pad[2] if len(pad) > 2 else left
+        scroll = self._scroll_frame()
+        if scroll is not None:
+            try:
+                width = int(float(scroll.canvas.cget("width")))
+            except (tk.TclError, ValueError):
+                width = 0
+            shown = scroll.canvas.winfo_width()
+            if shown > 1:
+                width = min(width, shown) if width > 1 else shown
+            return width - left - right
         return master.winfo_width() - left - right
 
     def fit(self, width: int) -> None:
         """Use the largest mini-card text at which 13 cards fit in `width`."""
-        if width <= 1:
+        if width <= 1 or not themes.alive(self):
             return
         size = self.SIZES[-1]
         for candidate in self.SIZES:
@@ -1080,21 +1337,35 @@ class CardGrid(ttk.Frame):
             if cell * len(RANKS) <= width:
                 size = candidate
                 break
-        if size != self.size:
+        if size != self.size and self._guard.allow():
             self.size = size
             for _card, button in self.buttons:
                 button.configure(font=font("card", size, "bold"))
             notify_resized(self)
 
+    def show_jokers(self, count: int) -> None:
+        """Show only the first `count` joker buttons (the jokers this game
+        has); the rest are hidden, not just greyed out."""
+        jokers = [button for card, button in self.buttons if card.is_joker]
+        for i, button in enumerate(jokers):
+            if i < count:
+                button.grid()
+            else:
+                button.grid_remove()
+        self.shown_jokers = count
+        if getattr(self, "_beside", None) is not None:
+            self.beside_jokers(self._beside)        # move it up next to the jokers left
+
     def beside_jokers(self, widget: tk.Misc) -> None:
         """Put `widget` (a child of this grid) in the joker row, after the jokers."""
-        start = self.jokers * 2
+        self._beside = widget
+        start = getattr(self, "shown_jokers", self.jokers) * 3
         widget.grid(row=len(SUITS), column=start, columnspan=len(RANKS) - start,
                     sticky="w", padx=(8 if start else 0, 0))
 
     def _add(self, card: Card, row: int, col: int, columnspan: int = 1) -> None:
-        text = "Joker" if card.is_joker else card.label()
-        button = tk.Button(self, text=text, width=6 if card.is_joker else 3, relief="flat",
+        text = card.name if card.is_joker else card.label()
+        button = tk.Button(self, text=text, width=10 if card.is_joker else 3, relief="flat",
                            borderwidth=0, padx=2, pady=1, cursor="hand2",
                            font=font("card", self.size, "bold"))
         button.configure(command=lambda c=card, b=button: self.on_pick(c, b))
@@ -1108,8 +1379,8 @@ class CardGrid(ttk.Frame):
 
     def _paint(self, card: Card, button: tk.Button) -> None:
         t = self.theme
-        chosen = self.selected is not None and card.label() == self.selected
-        bg = t.select if chosen else (t.joker if card.is_joker else t.card)
+        chosen = self.selected is not None and card.key() == self.selected
+        bg = t.select if chosen else (joker_colors(card, t)[0] if card.is_joker else t.card)
         fg = readable_on(t.select) if chosen else suit_color(card, t)
         button.configure(background=bg, foreground=fg,
                          activebackground=t.select if chosen else t.card_edge,
@@ -1119,10 +1390,10 @@ class CardGrid(ttk.Frame):
             button.configure(background=t.panel)
 
     def set_available(self, labels: Iterable[str]) -> None:
-        """Enable only cards whose label is in `labels` (others are gone)."""
+        """Enable only cards whose key (Card.key(): "A♥", "🃏:big") is in `labels`."""
         labels = set(labels)
         for card, button in self.buttons:
-            button.configure(state="normal" if card.label() in labels else "disabled")
+            button.configure(state="normal" if card.key() in labels else "disabled")
             self._paint(card, button)
 
     def set_selected(self, label: Optional[str]) -> None:
@@ -1370,6 +1641,7 @@ def flow_row(frame: tk.Misc, children: Sequence[tk.Misc], gap: int = 10) -> None
     """Lay `children` out in one row inside `frame`, wrapping onto more rows
     when the frame is too narrow for them all (like words in a line)."""
     state = {"columns": 0}
+    guard = FlipGuard()
 
     def arrange(_event=None):
         width = frame.winfo_width()
@@ -1378,7 +1650,7 @@ def flow_row(frame: tk.Misc, children: Sequence[tk.Misc], gap: int = 10) -> None
         if width > 1:
             while columns > 1 and sum(sorted(widths, reverse=True)[:columns]) > width:
                 columns -= 1
-        if columns == state["columns"]:
+        if columns == state["columns"] or (state["columns"] and not guard.allow()):
             return
         state["columns"] = columns
         for i, child in enumerate(children):

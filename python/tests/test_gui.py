@@ -4,9 +4,13 @@ GUI SMOKE TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_gui.py
 Status: ACTIVE
-Version: 1.3
+Version: 1.4
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Last Tested: 2026-10-20 (pytest: 308 passed)
+
+VERSION 1.4 CHANGES (2026-10-20):
+- Recovery brings back the card that beat the box (the 5 that beat a K);
+  the odds table shows "Joker" by name.
 
 VERSION 1.3 CHANGES (2026-10-20):
 - The odds table has the card first and starts sorted by Best; new test
@@ -89,17 +93,17 @@ def test_recovery_is_chosen_on_the_board(tk_root, window, no_dialogs):
     gui.game = game(["7", "K"], ["5", "7", "9"], inclusive=1)
     gui.refresh()
     gui.box_clicked(1)
-    gui.make_call(HIGHER)              # K fails on a 5
+    gui.make_call(HIGHER)              # K fails on a 5: the 5 goes on top
     assert gui.box_views[1].describe() == "Failed"
     gui.box_clicked(0)
     gui.make_call(LOWER_EQUAL)         # 7 on 7: recovery earned
     assert gui.game.recovery_pending
-    assert gui.box_views[1].describe() == "Failed\nK♥"  # show-failed is on
+    assert gui.box_views[1].describe() == "Failed\n5♠"  # show-failed is on: the 5 on top
     assert gui.box_views[1].state == "recoverable"
     assert gui.banner_kind == "recover"
     assert gui.call_buttons[HIGHER].instate(["disabled"])
     gui.box_clicked(1)
-    assert gui.game.box[1].rank == 13 and not gui.game.recovery_pending
+    assert gui.game.box[1].rank == 5 and not gui.game.recovery_pending   # it beat the K
 
 
 def test_skip_recovery_button(tk_root, window, no_dialogs):
@@ -124,7 +128,7 @@ def test_probability_window_tracks_the_game(tk_root, window, no_dialogs):
     rows = [gui.prob_tree.item(i, "values") for i in gui.prob_tree.get_children()]
     # Columns: card, box, then the calls in button order (▲=, ▲, ▼, ▼=), tie,
     # best plain call. Rows: best chance first (the joker is a sure win).
-    assert rows[0][:2] == ("🃏", "8") and rows[0][3] == "100.0%" and rows[0][7] == "Sure win"
+    assert rows[0][:2] == ("Joker", "8") and rows[0][3] == "100.0%" and rows[0][7] == "Sure win"
     assert rows[1][:2] == ("8♠", "7")
     assert rows[1][2:6] == ("75.0%", "75.0%", "25.0%", "25.0%") and rows[1][7] == "▲ 75.0%"
     gui.box_clicked(0)

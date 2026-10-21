@@ -4,9 +4,21 @@ BEAT THE BOX RULES ENGINE
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/engine.py
 Status: ACTIVE
-Version: 1.3
+Version: 1.4
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Last Tested: 2026-10-20 (pytest: 308 passed)
+
+VERSION 1.4 CHANGES (2026-10-20):
+- Rule change (docs/RULES.md, "How a box fails"): a failed box keeps the
+  card that beat it. The drawn card goes on top of the box card and the
+  stack is turned over; a recovery turns it back, so that card comes back
+  (Lower on a Q that draws an A recovers as the A, not the Q).
+- Jokers have a kind, "big" or "little" (Card.kind, JOKER_KINDS,
+  JOKER_NAMES), only so the windows can tell them apart. It is left out of
+  equality and hashing, so play, odds, counts and statistics are unchanged.
+  standard_deck() makes a big joker, then a little one; new take_card()
+  removes the same kind first (dealing or flipping one joker leaves the
+  other); Card.name and Card.key() give "Big Joker" and "🃏:big".
 
 VERSION 1.3 CHANGES (2026-10-20):
 - OFFER_ORDER (the order the windows show the call buttons, and the
@@ -63,7 +75,9 @@ DEPENDENCIES:
 
 KEY FUNCTIONS:
 -------------
-- Card(rank, suit), Card.joker(), Card.parse(text) -> card value objects
+- Card(rank, suit), Card.joker(kind), Card.parse(text) -> card value objects;
+  Card.name ("Big Joker"), Card.key() ("🃏:big")
+- take_card(cards, card) -> remove one copy (the same joker kind first)
 - standard_deck(jokers), shuffled_deck(jokers, seed) -> list of cards
 - Rng(seed) -> Mulberry32 PRNG used by the shuffle
 - call_wins(call, drawn, target), is_exact_match(drawn, target)
@@ -92,8 +106,8 @@ ValueError subclass. The game state is unchanged when one is raised.
 NOTES:
 -----
 - Calls are plain strings: "higher", "lower", "higher_equal", "lower_equal".
-- A joker is Card(0, ""). Two jokers are equal values and are told apart
-  by list position, never by their text label.
+- A joker is Card(0, ""). Two jokers are equal values. Card.kind ("big"
+  or "little") tells them apart on screen only; it never changes play.
 - The shuffle is Mulberry32 + Fisher-Yates, so a seed deals the same game
   in Python and TypeScript. Golden deals are pinned in tests/test_rules.py.
 - A recovery earned on the last card can still be used (raises boxes left).
@@ -113,6 +127,10 @@ SUITS = ("♠", "♥", "♦", "♣")
 RANKS = tuple(range(2, 15))  # 2..10, J=11, Q=12, K=13, A=14 (aces high)
 JOKER_RANK = 0
 JOKER_SYMBOL = "🃏"
+# The two jokers look different on screen (a big and a little joker), but
+# play exactly alike: kind never takes part in equality, odds or statistics.
+JOKER_KINDS = ("big", "little")
+JOKER_NAMES = {"big": "Big Joker", "little": "Little Joker", "": "Joker"}
 BOX_SIZE = 9
 MAX_JOKERS = 2
 STANDARD_DRAW_PILE = 52 - BOX_SIZE  # 43
@@ -149,23 +167,39 @@ class RulesError(ValueError):
 class Card:
     """A playing card. Two cards with the same rank and suit are equal.
 
-    Jokers are ``Card(0, "")``. Two jokers in one deck are equal values; they
-    are told apart by position in a list, never by their text label.
+    Jokers are ``Card(0, "")``. Two jokers in one deck are equal values. Their
+    ``kind`` ("big" or "little") is only for showing them apart on screen: it
+    is left out of equality and hashing, so it can never change a result.
     """
 
     rank: int
     suit: str = ""
+    kind: str = field(default="", compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.rank == JOKER_RANK:
             if self.suit:
                 raise ValueError("a joker has no suit")
+            if self.kind not in JOKER_NAMES:
+                raise ValueError(f"unknown joker kind {self.kind!r}")
+        elif self.kind:
+            raise ValueError("only a joker has a kind")
         elif self.rank not in RANKS or self.suit not in SUITS:
             raise ValueError(f"invalid card: rank={self.rank!r} suit={self.suit!r}")
 
     @classmethod
-    def joker(cls) -> "Card":
-        return cls(JOKER_RANK, "")
+    def joker(cls, kind: str = "") -> "Card":
+        return cls(JOKER_RANK, "", kind)
+
+    @property
+    def name(self) -> str:
+        """"Big Joker", "Little Joker", "Joker" or the label ("A♥")."""
+        return JOKER_NAMES[self.kind] if self.is_joker else self.label()
+
+    def key(self) -> str:
+        """Text that tells every physical card apart, jokers included:
+        "A♥", "🃏:big", "🃏:little". Card.parse reads it back."""
+        return f"{JOKER_SYMBOL}:{self.kind}" if self.is_joker and self.kind else self.label()
 
     @property
     def is_joker(self) -> bool:
@@ -187,10 +221,14 @@ class Card:
 
     @classmethod
     def parse(cls, text: str) -> "Card":
-        """Parse "A♠", "10♣", "q♥", "7S", "🃏" or "joker"."""
+        """Parse "A♠", "10♣", "q♥", "7S", "🃏", "joker", or a joker with its
+        kind: "🃏:big", "big joker", "🃏:little", "little joker"."""
         text = text.strip()
         if text == JOKER_SYMBOL or text.lower() in ("joker", "jk"):
             return cls.joker()
+        for kind in JOKER_KINDS:
+            if text in (f"{JOKER_SYMBOL}:{kind}",) or text.lower() == f"{kind} joker":
+                return cls.joker(kind)
         if len(text) < 2:
             raise ValueError(f"cannot parse card {text!r}")
         rank_text, suit = text[:-1].upper(), text[-1]
@@ -210,8 +248,18 @@ def standard_deck(jokers: int = 0) -> List[Card]:
     if not 0 <= jokers <= MAX_JOKERS:
         raise RulesError(f"jokers must be 0-{MAX_JOKERS}")
     deck = [Card(rank, suit) for suit in SUITS for rank in RANKS]
-    deck.extend(Card.joker() for _ in range(jokers))
+    deck.extend(Card.joker(kind) for kind in JOKER_KINDS[:jokers])
     return deck
+
+
+def take_card(cards: List[Card], card: Card) -> Card:
+    """Remove one copy of `card` from `cards` and return it. A joker of the
+    same kind is taken first (so picking the little joker leaves the big
+    one), then any equal card."""
+    for i, other in enumerate(cards):
+        if other == card and other.kind == card.kind:
+            return cards.pop(i)
+    return cards.pop(cards.index(card))   # ValueError if it isn't there
 
 
 class Rng:
@@ -491,7 +539,8 @@ class Game:
     """One game of Beat the Box.
 
     ``box[i]`` is the live card in box i, or None if that box has failed.
-    ``failed[i]`` is the card box i failed on (it comes back on recovery).
+    ``failed[i]`` is the card that beat box i: the drawn card, on top of
+    the face-down stack. It is the card that comes back on recovery.
     ``draw_pile[0]`` is the top of the pile.
     """
 
@@ -543,7 +592,7 @@ class Game:
         pile = standard_deck(jokers)
         for card in box:
             try:
-                pile.remove(card)  # removes one copy only
+                take_card(pile, card)  # one copy only (the same joker kind first)
             except ValueError:
                 raise RulesError(f"{card} is not available in this deck") from None
         return cls.from_cards(box, pile, inclusive_calls)
@@ -637,7 +686,7 @@ class Game:
         if drawn is None:
             drawn = self.draw_pile.pop(0)
         else:
-            self.draw_pile.remove(drawn)  # one copy only
+            drawn = take_card(self.draw_pile, drawn)  # one copy, same joker kind first
         self.stats["plays"] += 1
         if drawn.is_joker:
             self.stats["jokers_drawn"] += 1
@@ -648,8 +697,11 @@ class Game:
         if success:
             self.box[position] = drawn
         else:
+            # The drawn card goes on top of the box card and the box turns
+            # face down; a recovery turns the stack back over, so the card
+            # that beat the box is the one that comes back (docs/RULES.md).
             self.box[position] = None
-            self.failed[position] = target
+            self.failed[position] = drawn
 
         earned = success and inclusive and exact
         pending = earned and bool(self.failed)
@@ -668,8 +720,9 @@ class Game:
     def recover(self, position: int) -> Card:
         """Spend a pending recovery on one failed box (RULES.md, "Recovering").
 
-        The box comes back with the card it failed on. That card was already
-        counted when it first appeared, so the counts do not change.
+        The box comes back with the card on top of its stack: the drawn
+        card that beat it. That card was already counted when it was
+        flipped, so the counts do not change.
         """
         if not self.recovery_pending:
             raise RulesError("no recovery has been earned")

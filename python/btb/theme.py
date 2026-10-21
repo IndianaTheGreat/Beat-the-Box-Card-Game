@@ -4,9 +4,13 @@ THEMES AND STYLING
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/theme.py
 Status: ACTIVE
-Version: 1.2
+Version: 1.3
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Last Tested: 2026-10-20 (pytest: 308 passed)
+
+VERSION 1.3 CHANGES (2026-10-20):
+- Each theme has joker_big and joker_big_ink: the big joker's green face,
+  beside the little joker's purple one (joker, joker_ink).
 
 VERSION 1.2 CHANGES (2026-10-20):
 - doc_palette(theme): the colours of a formatted help page (headings and
@@ -103,8 +107,10 @@ class Theme:
     back_line: str      # pattern on the card back
     red: str            # hearts, diamonds
     black: str          # spades, clubs
-    joker: str          # joker face
+    joker: str          # joker face (the little joker: purple)
     joker_ink: str
+    joker_big: str      # the big joker's face (green)
+    joker_big_ink: str
     select: str         # selected box outline
     recover: str        # recoverable box glow, recovery banner
     good: str           # correct call banner
@@ -132,7 +138,7 @@ THEMES: List[Theme] = [
           bg="#155e35", panel="#0f4528", edge="#2a7a4b", text="#f3f7f0", muted="#b9d6c2",
           card="#fbf8ef", card_edge="#cfc8b4", shadow="#0b3520",
           back="#8c2323", back_line="#b04545", red="#b42318", black="#1c1c1c",
-          joker="#efe7ff", joker_ink="#5b21b6", select="#4cc3ff", recover="#f5b82e",
+          joker="#efe7ff", joker_ink="#5b21b6", joker_big="#e5f6e9", joker_big_ink="#166534", select="#4cc3ff", recover="#f5b82e",
           good="#1f8a4c", bad="#b42318", banner_text="#ffffff",
           button="#2a7a4b", button_hover="#33915a", button_text="#ffffff",
           accent="#e8c15a", accent_hover="#f2d27c", accent_text="#1b1b1b",
@@ -142,7 +148,7 @@ THEMES: List[Theme] = [
           bg="#1d3b7a", panel="#152c5e", edge="#3657a3", text="#eef2ff", muted="#bccaf0",
           card="#fbfbf7", card_edge="#c9ccd6", shadow="#0f2148",
           back="#9a3412", back_line="#c2541f", red="#b91c1c", black="#111827",
-          joker="#ede9fe", joker_ink="#5b21b6", select="#67e8f9", recover="#fbbf24",
+          joker="#ede9fe", joker_ink="#5b21b6", joker_big="#e3f5e7", joker_big_ink="#166534", select="#67e8f9", recover="#fbbf24",
           good="#15803d", bad="#b91c1c", banner_text="#ffffff",
           button="#3657a3", button_hover="#4468bb", button_text="#ffffff",
           accent="#fbbf24", accent_hover="#fcd34d", accent_text="#1b1b1b",
@@ -152,7 +158,7 @@ THEMES: List[Theme] = [
           bg="#7a1c1c", panel="#5e1414", edge="#a03636", text="#fff3f0", muted="#efc2bb",
           card="#fdf9f1", card_edge="#d6ccb8", shadow="#4a0f0f",
           back="#1e3a8a", back_line="#3b5cc4", red="#b42318", black="#1c1c1c",
-          joker="#f3e8ff", joker_ink="#6b21a8", select="#7dd3fc", recover="#facc15",
+          joker="#f3e8ff", joker_ink="#6b21a8", joker_big="#e6f6ea", joker_big_ink="#15602f", select="#7dd3fc", recover="#facc15",
           good="#15803d", bad="#9f1239", banner_text="#ffffff",
           button="#a03636", button_hover="#b84848", button_text="#ffffff",
           accent="#facc15", accent_hover="#fde047", accent_text="#1b1b1b",
@@ -162,7 +168,7 @@ THEMES: List[Theme] = [
           bg="#eef0f3", panel="#ffffff", edge="#cfd4dc", text="#111827", muted="#4b5563",
           card="#ffffff", card_edge="#9ca3af", shadow="#c7ccd4",
           back="#1d4ed8", back_line="#4f7ef0", red="#b91c1c", black="#111827",
-          joker="#ede9fe", joker_ink="#5b21b6", select="#2563eb", recover="#d97706",
+          joker="#ede9fe", joker_ink="#5b21b6", joker_big="#dcfce7", joker_big_ink="#166534", select="#2563eb", recover="#d97706",
           good="#15803d", bad="#b91c1c", banner_text="#ffffff",
           button="#e2e6ec", button_hover="#d3d9e2", button_text="#111827",
           accent="#2563eb", accent_hover="#1d4ed8", accent_text="#ffffff",
@@ -172,7 +178,7 @@ THEMES: List[Theme] = [
           bg="#0f172a", panel="#1e293b", edge="#334155", text="#e2e8f0", muted="#94a3b8",
           card="#f8fafc", card_edge="#94a3b8", shadow="#020617",
           back="#4338ca", back_line="#6366f1", red="#be123c", black="#0f172a",
-          joker="#ede9fe", joker_ink="#6d28d9", select="#38bdf8", recover="#f59e0b",
+          joker="#ede9fe", joker_ink="#6d28d9", joker_big="#dcfce7", joker_big_ink="#14532d", select="#38bdf8", recover="#f59e0b",
           good="#15803d", bad="#be123c", banner_text="#ffffff",
           button="#334155", button_hover="#475569", button_text="#f1f5f9",
           accent="#38bdf8", accent_hover="#7dd3fc", accent_text="#0f172a",
@@ -182,7 +188,7 @@ THEMES: List[Theme] = [
           bg="#3a4150", panel="#2b313c", edge="#525b6b", text="#f3f4f6", muted="#c3c8d2",
           card="#f9fafb", card_edge="#9ca3af", shadow="#1f242c",
           back="#0f766e", back_line="#2a9d8f", red="#b91c1c", black="#111827",
-          joker="#ede9fe", joker_ink="#5b21b6", select="#5eead4", recover="#fbbf24",
+          joker="#ede9fe", joker_ink="#5b21b6", joker_big="#e3f6e8", joker_big_ink="#166534", select="#5eead4", recover="#fbbf24",
           good="#15803d", bad="#b91c1c", banner_text="#ffffff",
           button="#525b6b", button_hover="#616b7d", button_text="#ffffff",
           accent="#5eead4", accent_hover="#99f6e4", accent_text="#0f1a1a",
@@ -192,7 +198,7 @@ THEMES: List[Theme] = [
           bg="#eadfc8", panel="#f7f0e1", edge="#cbb994", text="#3a2e1d", muted="#6b5a3e",
           card="#fffdf7", card_edge="#b8a77f", shadow="#cbbd9c",
           back="#6b3f1d", back_line="#8f5a2e", red="#a61b1b", black="#2a2116",
-          joker="#f1e8ff", joker_ink="#5b2a86", select="#1d6fa5", recover="#b7791f",
+          joker="#f1e8ff", joker_ink="#5b2a86", joker_big="#e8f3df", joker_big_ink="#2f5a1d", select="#1d6fa5", recover="#b7791f",
           good="#2f6b2f", bad="#a61b1b", banner_text="#ffffff",
           button="#ddd0b3", button_hover="#d2c29f", button_text="#3a2e1d",
           accent="#6b3f1d", accent_hover="#7d4d27", accent_text="#fffdf7",
@@ -202,7 +208,7 @@ THEMES: List[Theme] = [
           bg="#000000", panel="#111111", edge="#ffffff", text="#ffffff", muted="#e0e0e0",
           card="#ffffff", card_edge="#000000", shadow="#444444",
           back="#003cff", back_line="#7a9bff", red="#c00000", black="#000000",
-          joker="#ffffff", joker_ink="#6a00ff", select="#00e5ff", recover="#ffd600",
+          joker="#ffffff", joker_ink="#6a00ff", joker_big="#ffffff", joker_big_ink="#006b2e", select="#00e5ff", recover="#ffd600",
           good="#00a83e", bad="#d10000", banner_text="#ffffff",
           button="#ffffff", button_hover="#ffd600", button_text="#000000",
           accent="#ffd600", accent_hover="#ffe866", accent_text="#000000",

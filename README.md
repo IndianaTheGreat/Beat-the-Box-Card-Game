@@ -2,7 +2,7 @@
 
 # 🂠 Beat the Box
 
-**A solitaire card game of odds, nerve, and second chances, with a full toolkit for playing, simulating, and optimizing.**
+**A solitaire card game about odds and second chances, with tools for playing, simulating and optimizing it.**
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Tkinter](https://img.shields.io/badge/GUI-Tkinter-2E7D32)
@@ -16,14 +16,14 @@
 
 ## 🎲 What is Beat the Box?
 
-Nine cards sit face up in a 3×3 grid: **the box**. Pick a card, call whether the next card off the deck will be **higher** or **lower**, and flip.
+Nine cards sit face up in a 3×3 grid, and that grid is the box. Pick a card, call whether the next card off the deck will be higher or lower, and flip.
 
 - Call it right, and the new card takes its place.
 - Call it wrong, and that box is gone.
 
-Survive the whole deck with at least one box standing, and you **beat the box**.
+Get through the whole deck with at least one box standing and you beat the box.
 
-You also get a few **inclusive calls** (higher-*or-equal*, lower-*or-equal*). Hit an exact match with one, and you can **bring a dead box back to life**. Add up to two **wild jokers**, and every game becomes a real puzzle of probability and timing.
+You also get a few inclusive calls (higher-*or-equal*, lower-*or-equal*). If one hits an exact match, you can bring a dead box back. You can add up to two wild jokers as well, and then each game comes down to odds and timing.
 
 ```
 ┌─────┬─────┬─────┐
@@ -44,7 +44,7 @@ You also get a few **inclusive calls** (higher-*or-equal*, lower-*or-equal*). Hi
 
 ## 🧰 The Suite
 
-This repo is more than the game. It's a set of tools for understanding it.
+Besides the game itself, this repo has tools for studying it.
 
 | Tool | What it does |
 |---|---|
@@ -53,7 +53,7 @@ This repo is more than the game. It's a set of tools for understanding it.
 | 📊 **Simulator** | Let the strategy play thousands of games and report the win rate with its margin of error, with a chart for every distribution (boxes left, cards left, plays, inclusive calls, recoveries, jokers). Export to CSV or JSON. |
 | 🔬 **Strategy Optimizer** | Sweep joker counts, inclusive-call budgets, and thresholds on the same deals, chart the win rate against each, see which results are statistically tied, confirm the top ten, and export the table. |
 
-All four live in **one window** (`main.py`): a sidebar switches between them, the help pages and Settings, and each page keeps its place while you look at another. Nothing pops up, the pages resize with the window (down to 960 × 620, with scrollbars where something doesn't fit), the help pages read like a formatted document, and there are eight colour themes. Big runs use several CPU cores, checking first what is free. [docs/GUIDE.md](docs/GUIDE.md) explains every page in detail.
+All four live in one window (`main.py`). A sidebar switches between them, the help pages and Settings, and each page keeps its place while you look at another. Nothing pops up. The pages resize with the window (down to 960 × 620, with scrollbars where something doesn't fit), the help pages are laid out like a formatted document, and there are eight colour themes. Big runs use several CPU cores after checking which ones are free. [docs/GUIDE.md](docs/GUIDE.md) explains every page in detail.
 
 ---
 
@@ -67,7 +67,7 @@ cd Beat-the-Box-Card-Game/python
 python main.py
 ```
 
-The suite needs nothing beyond the Python standard library. The commands here use `python`, which works with the Microsoft Store Python (it has no `py` launcher); on macOS and Linux it may be `python3`.
+The suite needs nothing beyond the Python standard library. The commands here use `python`, which works with the Microsoft Store Python (it has no `py` launcher). On macOS and Linux it may be `python3`.
 
 ### 🧪 Running the tests
 
@@ -79,9 +79,9 @@ python -m pytest                          # the whole suite, about a minute
 python -m pytest tests/test_rules.py      # one file
 ```
 
-Use `python -m pytest` rather than `pytest`: with the Store Python, `pytest` isn't on PATH. While the window tests run, **small windows flash on screen**; that's normal. Skipped tests are listed with their reason, and a test stuck for more than 60 seconds prints a traceback of where it is.
+Use `python -m pytest` rather than `pytest`, because with the Store Python `pytest` isn't on PATH. Small windows flash on screen while the window tests run. That's normal. Skipped tests are listed with their reason, and a test stuck for more than 60 seconds prints a traceback of where it is.
 
-The tests in `python/tests/` are the executable spec: one per rule in [docs/RULES.md](docs/RULES.md), one per bug fixed from v1, plus checks that the fast simulator matches the original, that parallel runs match single-process runs, that every theme is readable, and that the docs agree with the engine. GUI tests skip when no display is available; on headless Linux, run `xvfb-run python3 -m pytest`. The tests never touch your real settings.
+The tests in `python/tests/` are the executable spec. There is one per rule in [docs/RULES.md](docs/RULES.md) and one per bug fixed from v1, plus checks that the fast simulator matches the original, that parallel runs match single-process runs, that every theme is readable, and that the docs agree with the engine. GUI tests skip when no display is available. On headless Linux, run `xvfb-run python3 -m pytest`. The tests never touch your real settings.
 
 <details>
 <summary><b>Linux: Tkinter not found?</b></summary>
@@ -144,7 +144,7 @@ Beat-the-Box-Card-Game/
     └── requirements-dev.txt
 ```
 
-Every tool plays through `btb/engine.py`, so the rules live in exactly one place. Seeded deals use a Mulberry32 shuffle that the TypeScript port can reproduce card for card.
+Every tool plays through `btb/engine.py`, so the rules live in one place. Seeded deals use a Mulberry32 shuffle that the TypeScript port can reproduce card for card.
 
 ---
 
@@ -156,22 +156,22 @@ Every tool plays through `btb/engine.py`, so the rules live in exactly one place
 - [x] **Tests** covering every rule in [RULES.md](docs/RULES.md).
 - [x] **Modern look and docs.** Drawn cards, a result banner, eight themes, a faster and more accurate simulator with exports, and the [strategy](docs/STRATEGY.md) and [tool](docs/GUIDE.md) guides.
 - [x] **One window.** A sidebar instead of pop-ups, a board that resizes, call buttons paired by direction with dead calls greyed out, and a [card-counting guide](docs/CARD_COUNTING.md).
-- [x] **Polish.** Separate odds and counts switches, a sortable odds table, help pages that read like a document, charts in the Advanced tabs, the docs gathered in `docs/`, and a test run that no longer freezes on Windows.
+- [x] **Polish.** Separate odds and counts switches, a sortable odds table, help pages that read like a document, charts in the Advanced tabs, and the docs gathered in `docs/`.
+- [x] **Play-testing fixes.** A recovered box comes back with the card that beat it, a big and a little joker, a Cards view of what's left in the pile, and the fix for the window (and the test run) freezing on Windows when the Assistant's card grid kept resizing itself.
 - [ ] **TypeScript engine.** A port of the rules engine, checked against the same tests as the Python version.
 - [ ] **Chrome extension.** Play in the browser side panel, with no install beyond the extension itself.
-- [ ] **Web version** on GitHub Pages: play from a link.
 
 ---
 
 ## 🧠 Strategy Tips
 
-- **Middle cards are the danger zone.** A `2` or an `A` is close to a sure thing, while a `7`, `8` or `9` is a coin flip.
+- **Middle cards are the risky ones.** A `2` or an `A` is close to a sure thing. An `8` wins only about 47% either way (a tie loses), and a `7` or a `9` starts at about 55% for its better call.
 - **Save inclusive calls.** Early on they add only about 6 points (the chance of a tie). Spend them when a tie is likely.
-- **A joker in the box is a free recovery.** Play an inclusive call on it once you have a failed box to bring back. With no inclusive calls left, play it right away.
-- **Watch the count.** A strongly positive count means low cards are due, and a negative count means high cards are. The Basic count is exact: see [CARD_COUNTING.md](docs/CARD_COUNTING.md). **Show counts** (Ctrl+K) shows it without the odds, for practice.
-- **Choose recoveries carefully.** Bring back the failed box with the most extreme card, since it gives the easiest next call.
+- **A joker in the box is a free recovery.** Play an inclusive call on it once you have a failed box to bring back. If you have no inclusive calls left, play it right away.
+- **Watch the count.** A strongly positive count means low cards are due, and a negative count means high cards are. The Basic count is exact (see [CARD_COUNTING.md](docs/CARD_COUNTING.md)). **Show counts** (Ctrl+K) shows it without the odds, for practice.
+- **Choose recoveries carefully.** Bring back the failed box with the most extreme card. It gives the easiest next call.
 
-More, with the numbers behind it: [STRATEGY.md](docs/STRATEGY.md).
+There's more, with the numbers behind it, in [STRATEGY.md](docs/STRATEGY.md).
 
 ---
 

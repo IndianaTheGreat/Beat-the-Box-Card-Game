@@ -4,9 +4,12 @@ HELP PAGES, CHARTS AND TEST SET-UP TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_help_and_charts.py
 Status: ACTIVE
-Version: 1.0
+Version: 1.1
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Last Tested: 2026-10-20 (pytest: 308 passed)
+
+VERSION 1.1 CHANGES (2026-10-20):
+- Tab stops are read with splitlist (Windows returns Tcl objects).
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. The help-page markup (btb/markup.py) and how DocView draws it
@@ -262,7 +265,8 @@ def test_the_count_table_fits_the_smallest_window(tk_root, no_dialogs):
 def test_a_key_chip_fits_its_column_and_passes_the_wheel_on(tk_root):
     view = doc(tk_root, text.shortcut_help())
     chip = next(c for c in view.chips if c.cget("text") == "7 8 9 / 4 5 6 / 1 2 3")
-    stops = [float(v) for v in view.text.tag_cget("table1", "tabs")[::2]]
+    tabs = view.text.tk.splitlist(view.text.tag_cget("table1", "tabs"))   # Tcl objects on Windows
+    stops = [float(str(v)) for v in tabs[::2]]
     assert view.text.winfo_rootx() + stops[1] > chip.winfo_rootx() + chip.winfo_width()
     view.text.yview_moveto(0)
     pump(tk_root)

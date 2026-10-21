@@ -4,9 +4,13 @@ DOCUMENTATION CONSISTENCY TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_docs.py
 Status: ACTIVE
-Version: 1.2
+Version: 1.3
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Last Tested: 2026-10-20 (pytest: 308 passed)
+
+VERSION 1.3 CHANGES (2026-10-20):
+- The two docs/RULES.md contents links are fixed, so every file's
+  anchors are checked with no known failures.
 
 VERSION 1.2 CHANGES (2026-10-20):
 - RULES.md and STRATEGY.md now live in docs/; the paths follow them, and
@@ -192,17 +196,7 @@ def test_every_relative_link_points_at_a_file(name):
         assert (path.parent / unquote(target)).resolve().exists(), f"{name}: {target}"
 
 
-# docs/RULES.md links to #-inclusive-calls and #-recovering-a-failed-box, but
-# GitHub's anchors for those headings keep the emoji's variation selector
-# (%EF%B8%8F-...), so the two links don't jump. RULES.md is only changed with
-# the owner's OK, so this stays a known failure until then (strict: the
-# test says so the moment it is fixed).
-RULES_ANCHORS = pytest.mark.xfail(strict=True, reason="two contents links in docs/RULES.md "
-                                  "need the emoji's variation selector (owner's call)")
-
-
-@pytest.mark.parametrize("name", [pytest.param(n, marks=RULES_ANCHORS)
-                                  if n == "docs/RULES.md" else n for n in sorted(DOCS)])
+@pytest.mark.parametrize("name", sorted(DOCS))
 def test_every_anchor_link_points_at_a_real_heading(name):
     path = DOCS[name]
     doc = path.read_text(encoding="utf-8")

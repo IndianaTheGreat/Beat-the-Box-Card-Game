@@ -4,9 +4,17 @@ IN-APP TEXT AND SHORTCUTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/text.py
 Status: ACTIVE
-Version: 1.3
+Version: 1.4
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Last Tested: 2026-10-20 (pytest: 308 passed)
+
+VERSION 1.4 CHANGES (2026-10-20):
+- Recovery text follows the new rule: a recovered box comes back with the
+  card that beat it (the drawn card on top of its stack).
+- The big and little jokers, and the Cards left view's Simple and Cards
+  tabs, are described.
+- Plainer wording throughout: fewer colons and less bold, no filler, and
+  no em dashes.
 
 VERSION 1.3 CHANGES (2026-10-20):
 - Every help text is written in a light Markdown-style markup
@@ -107,7 +115,7 @@ def shortcut_help() -> str:
     return "\n".join([
         "# Keyboard Shortcuts",
         "",
-        "These work on the Game Player and Game Assistant pages, whenever you are "
+        "These work on the Game Player and Game Assistant pages when you are "
         "not typing in a field.",
         "",
         "| Keys | What it does |",
@@ -125,12 +133,12 @@ RULES_SUMMARY = """# How to Play
 
 ## Goal
 
-Get through the entire draw pile with at least one box still alive.
+Get through the whole draw pile with at least one box still alive.
 
 ## Setup
 
-Shuffle 52 cards plus 0, 1 or 2 jokers. Deal 9 face up in a 3 × 3 grid:
-**the box**. The rest is the draw pile. Aces are high; suits don't matter.
+Shuffle 52 cards plus 0, 1 or 2 jokers. Deal 9 face up in a 3 × 3 grid.
+That grid is **the box**, and the rest is the draw pile. Aces are high; suits don't matter.
 
 ## Your Turn
 
@@ -147,28 +155,33 @@ Pick a live box, make a call, then flip the top card of the pile.
 - **Wrong:** the box fails.
 - A same-rank card on a plain Higher or Lower is a loss.
 
-> Example: a box shows 7♠ and you call Higher. Flip J♣: correct, and the
-> J♣ now sits on that box. Flip 7♥ instead: the box fails, because a tie
-> loses on a plain call (Higher or Equal would have won).
+> Example: a box shows 7♠ and you call Higher. If you flip J♣, you are
+> right and the J♣ now sits on that box. If you flip 7♥, the box fails,
+> because a tie loses on a plain call (Higher or Equal would have won).
 
 ## Inclusive Calls
 
-Spent when you make the call, win or lose. If the flip is an exact rank
-match, you also earn one recovery.
+An inclusive call is spent when you make it, win or lose. If the flip is
+an exact rank match, you also earn one recovery.
 
 ## Jokers
 
 Any play involving a joker succeeds, whether the joker is drawn or is in
-the box. A joker is an exact match for any card, so an inclusive call
+the box. With two jokers, one is the **Big Joker** (green) and one the
+**Little Joker** (purple). They only look different and play exactly
+alike. A joker is an exact match for any card, so an inclusive call
 involving a joker always earns a recovery.
 
 ## Recovery
 
 1. The play resolves first.
 2. Then pick one failed box to bring back, or skip.
-3. It returns with the card it failed on.
+3. It returns with the card that beat it. When a box fails, the drawn
+   card goes on top and the stack is turned over; a recovery turns it
+   back, so that card is on top. Lower on a Q♥ that draws an A♠ fails
+   the box, and recovering it later brings back the A♠.
 
-If no box has failed, the recovery is lost: recoveries can't be saved for
+If no box has failed, the recovery is lost. Recoveries can't be saved for
 later.
 
 ## Win or Lose
@@ -210,13 +223,13 @@ or a flip). A recovered card is not counted again. Jokers and 8s count 0.
 
 ## Inclusive Calls
 
-- An inclusive call adds exactly one thing: the chance that the next card
-  TIES the box card. Early in the game that is only about 6% (3 cards of
-  each rank are left out of about 50).
+- An inclusive call adds one thing, the chance that the next card TIES
+  the box card. Early in the game that is only about 6% (3 cards of each
+  rank are left out of about 50).
 - So don't spend them early on any middle card. Wait until a rank is
   crowded in the pile, when a tie is much more likely.
-- The simulator's **threshold** is this idea as a number: spend a call only
-  when it adds at least that many points. 10 is the best all-rounder for
+- The simulator's **threshold** puts a number on this. It spends a call
+  only when it adds at least that many points. 10 is the best all-rounder for
   5 to 10 calls; with only 1 to 3 calls, 15 does as well or better.
 - With lots of calls (15 or more), spend them more freely (threshold
   about 5, or 0 when you have one for nearly every card). Unused calls are
@@ -224,9 +237,9 @@ or a flip). A recovered card is not counted again. Jokers and 8s count 0.
 
 ## Jokers
 
-- A joker in the box is a guaranteed recovery: spend an inclusive call on
+- A joker in the box is a guaranteed recovery. Spend an inclusive call on
   it once you have a failed box to bring back.
-- Until then, hold it, but only while you still have inclusive calls.
+- Until then, hold it, as long as you still have inclusive calls.
 - With no inclusive calls left, play the joker right away. It can't earn a
   recovery any more, so holding it just freezes one of your boxes.
 
@@ -234,17 +247,17 @@ or a flip). A recovered card is not counted again. Jokers and 8s count 0.
 
 - Bring back the failed box with the most extreme card (a 2♣ or an A♦,
   say). It gives the easiest next call.
-- Recoveries can't be saved: one earned with nothing failed is lost.
+- Recoveries can't be saved. One earned with nothing failed is lost.
 
 ## Using the Odds
 
 - `Ctrl+O` (**Show odds**) shows the chance of Higher and Lower under each
-  card; `Ctrl+P` shows the full odds table beside the board.
-- `Ctrl+K` (**Show counts**) shows the three card counts and your plays;
+  card. `Ctrl+P` shows the full odds table beside the board.
+- `Ctrl+K` (**Show counts**) shows the three card counts and your plays.
   `Ctrl+L` shows how many of each rank are left.
 - Pick the box whose best plain call has the highest odds. The odds table
-  starts sorted that way. The count is a quick way to guess the same thing
-  when the odds are hidden.
+  starts sorted that way. When the odds are hidden, the count gives you a
+  quick guess at the same thing.
 - The count gets you most of the way without the odds. To use inclusive
   calls well, also keep track of how many cards of each rank in your box
   are left. `docs/CARD_COUNTING.md` shows what each habit is worth."""
@@ -255,29 +268,31 @@ TOOL_HELP = {
 
 Play Beat the Box with a shuffled deck.
 
-1. **New Game** (`Ctrl+N`): choose jokers, inclusive calls and whether
-   failed cards are shown when you recover, beside the board, then
-   **Start Game**.
+1. Press **New Game** (`Ctrl+N`). Beside the board, choose jokers,
+   inclusive calls and whether failed cards are shown when you recover,
+   then press **Start Game**.
 2. Click a box, or press its number key (`7 8 9` / `4 5 6` / `1 2 3`).
 3. Make your call: Higher or Equal (`D`), Higher (`W`), Lower (`S`) or
    Lower or Equal (`A`). The banner at the top shows your call, the card
    drawn and the result.
-4. On an exact match with an inclusive call, failed boxes glow gold: click
-   one to bring it back, or **Skip Recovery** in the banner.
+4. On an exact match with an inclusive call, failed boxes glow gold. Click
+   one to bring it back, or press **Skip Recovery** in the banner.
 
 Buttons that make no sense are greyed out: Lower on a 2, Higher on an A,
 and the plain calls on a joker while you still have inclusive calls (an
 inclusive call on a joker is just as certain and can also recover a failed
-box). The rules still allow them; the game just doesn't offer them.
+box). The rules still allow these calls, but the game doesn't offer them.
 
-Two switches on the toolbar, each for this page only:
+The toolbar has two switches, each for this page only:
 
 - **Show odds** (`Ctrl+O`): the chance of Higher (▲) and Lower (▼) under
   each card, and the **Odds table** (`Ctrl+P`). The table starts with the
-  best chance at the top; click a heading to sort by it (highest first,
+  best chance at the top. Click a heading to sort by it (highest first,
   then lowest first, then by box).
 - **Show counts** (`Ctrl+K`): the three card counts with what they
-  suggest, every play so far, and the **Cards left** (`Ctrl+L`).
+  suggest, every play so far, and the **Cards left** (`Ctrl+L`), shown
+  as a **Simple** table or as the **Cards** themselves (four suit rows,
+  with the ones already played faded).
 
 Picking a view beside the board (or its shortcut) turns on the switch it
 needs. The tiles (draw pile, inclusive calls, boxes alive) always show.
@@ -289,24 +304,24 @@ needs. The tiles (draw pile, inclusive calls, boxes alive) always show.
 
 Use this while you play with a real deck of cards.
 
-1. **New Game** (`Ctrl+N`), choose the settings, then click the nine cards
-   you dealt, in order from the top-left box to the bottom-right box. They
-   appear on the board as you go.
+1. Press **New Game** (`Ctrl+N`), choose the settings, then click the nine
+   cards you dealt, in order from the top-left box to the bottom-right box. They
+   appear on the board as you go. Each joker has its own button: **Big
+   Joker** and **Little Joker**.
 2. Each turn, flip your real card, then click that card in the **Card you
    flipped** grid. Cards already used are greyed out.
-3. Select the box and make your call, exactly as in the Game Player.
+3. Select the box and make your call, the same as in the Game Player.
 
 Everything else works like the Game Player: the banner, the odds and
 counts switches, recoveries, greyed-out calls and undo. The odds come from
-the cards you haven't seen yet, so they are exactly right for your real
-game.
+the cards you haven't seen yet, so they are exact for your real game.
 
 > More detail: `docs/GUIDE.md` in the project folder.""",
 
     "simulator": """## Simulator
 
-Lets the built-in strategy play thousands of games with one setting and
-reports how it did.
+The built-in strategy plays thousands of games with one setting, and the
+page reports how it did.
 
 The strategy plays the plain call with the best odds, and spends an
 inclusive call only when it adds at least the **threshold** in points of
@@ -320,7 +335,7 @@ seed. The same seed always deals the same games, so runs can be repeated.
 **Overview tab:**
 
 - Win rate, with its 95% range ("25.6% ±0.9" means the true rate is
-  almost certainly between 24.7% and 26.5%). More games = narrower.
+  almost certainly between 24.7% and 26.5%). More games make it narrower.
 - Boxes left in winning games (chart), averages and the details table.
 
 **Advanced tab:** a chart of every distribution (boxes left in wins, cards
@@ -336,13 +351,14 @@ only what is free and always leaving a core for you.
 
     "optimizer": """## Strategy Optimizer
 
-Tries every combination of jokers, inclusive calls and thresholds in the
-ranges you give, plays the same deals with each, and ranks them.
+The Optimizer tries every combination of jokers, inclusive calls and
+thresholds in the ranges you give, plays the same deals with each, and
+ranks them.
 
-- **Same deals:** with one seed, every configuration plays exactly the
-  same shuffles, so differences come from the settings, not luck of the
-  deal.
-- **Ties:** highlighted rows are statistically tied with the best: their
+- **Same deals:** with one seed, every configuration plays the same
+  shuffles, so any difference comes from the settings and not from the
+  luck of the deal.
+- **Ties:** highlighted rows are statistically tied with the best. Their
   95% ranges overlap, so the data can't tell them apart.
 - **Confirm top 10:** re-runs the best ten with 5× more games on fresh
   deals. This catches a configuration that only looked best by luck.
@@ -368,14 +384,13 @@ pages; each page keeps its place when you switch away, so a long Optimizer
 run keeps going while you play.
 
 Every tool plays by the same rules engine (`btb/engine.py`), which follows
-`docs/RULES.md` exactly. Nothing about the rules is duplicated between
-tools.
+`docs/RULES.md` exactly. No tool has its own copy of a rule.
 
 - `docs/GUIDE.md` explains each tool in full.
 - `docs/STRATEGY.md` explains how to play well.
 - `docs/CARD_COUNTING.md` explains the counts.
 
-The window can be resized down to 960 × 620: the cards, tables and charts
+The window can be resized down to 960 × 620. The cards, tables and charts
 follow it, and a panel that doesn't fit gets a scrollbar."""
 
 
@@ -387,8 +402,9 @@ IMPORTANT_POINTS = """## Important Points
 - Inclusive calls are spent when made, win or lose.
 - Exact match on an inclusive call = one recovery. A joker (drawn or in
   the box) is an exact match for anything.
-- Recoveries can't be banked: with no failed box, the recovery is lost.
-- A recovered box comes back with the card it failed on.
+- Recoveries can't be banked. With no failed box, the recovery is lost.
+- A recovered box comes back with the card that beat it (the drawn card
+  on top of its stack) instead of the card it held before.
 
 ### Settings limits
 
@@ -396,11 +412,12 @@ IMPORTANT_POINTS = """## Important Points
 |---|---|
 | Jokers | 0 to 2 |
 | Inclusive calls | 0 to 43 + jokers |
-| Threshold | 0 to 100 percentage points: the gain an inclusive call must offer over the best plain call before the strategy spends one |
+| Threshold | 0 to 100 percentage points (what an inclusive call must add over the best plain call before the strategy spends one) |
 
 ### Reading the counts
 
-- **Positive count:** high cards already seen, so more LOW cards remain.
+- **Positive count:** high cards have already been seen, so more LOW
+  cards remain.
 - **Negative count:** more HIGH cards remain.
 
 ### Reading simulator results

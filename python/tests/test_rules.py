@@ -4,9 +4,14 @@ RULES TESTS (docs/RULES.md)
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_rules.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Last Tested: 2026-10-20 (pytest: 308 passed)
+
+VERSION 1.2 CHANGES (2026-10-20):
+- New recovery rule: a failed box holds the drawn card that beat it, and
+  that card comes back on a recovery (Examples 2 and 3 as rewritten in
+  docs/RULES.md, plus the Q / A case).
 
 VERSION 1.1 CHANGES (2026-10-20):
 - The rules file moved to docs/RULES.md; the run command is now
@@ -127,12 +132,14 @@ def test_turn_correct_call_puts_drawn_card_on_the_box():
     assert g.draw_pile == [card("3", 1)]
 
 
-def test_turn_wrong_call_fails_the_box_holding_the_old_card():
+def test_turn_wrong_call_fails_the_box_with_the_drawn_card_on_top():
+    # RULES.md "How a box fails": the drawn card goes on top of the box card
+    # and the stack is turned over, so the card that beat the box is on top.
     g = game(["4♣"], ["2♥", "3"])
     r = g.play(0, HIGHER)
     assert not r.success
     assert g.box[0] is None
-    assert g.failed == {0: card("4♣")}
+    assert g.failed == {0: card("2♥")}
 
 
 def test_turn_failed_box_cannot_be_played():
@@ -146,7 +153,7 @@ def test_turn_failed_box_cannot_be_played():
 def test_turn_same_rank_on_a_plain_call_is_a_loss(call):
     g = game(["8♦"], ["8♠"])
     r = g.play(0, call)
-    assert not r.success and g.failed == {0: card("8♦")}
+    assert not r.success and g.failed == {0: card("8♠")}   # RULES.md Example 2
 
 
 def test_turn_plain_calls_are_free():
@@ -252,10 +259,10 @@ def test_joker_drawn_onto_a_box_makes_the_next_play_there_certain():
 
 # -------------------------------------------------------------- Recovery --- #
 
-def test_recovery_example_3_returns_the_card_it_failed_on():
-    # RULES.md Example 3.
-    g = game(["7♥", "K♠"], ["5", "7♣", "2"], inclusive=1)
-    assert not g.play(1, HIGHER).success
+def test_recovery_example_3_returns_the_card_that_beat_the_box():
+    # RULES.md Example 3: the failed box has a K♠ on top (it beat a 5).
+    g = game(["7♥", "5♦"], ["K♠", "7♣", "2"], inclusive=1)
+    assert not g.play(1, LOWER).success
     r = g.play(0, LOWER_EQUAL)
     assert r.success and r.recovery_pending
     assert g.box[0] == card("7♣")  # the play resolved first
@@ -429,8 +436,18 @@ def test_counting_recovered_card_is_not_counted_again():
     before = list(g.counts)
     g.play(0, LOWER_EQUAL)  # 7 on 7: counted once, as drawn
     after_flip = list(g.counts)
-    g.recover(1)  # the K comes back: not counted again
+    g.recover(1)  # the 5 that beat the K comes back: not counted again
     assert g.counts == after_flip == [b + v for b, v in zip(before, count_values(card("7")))]
+
+
+def test_recovery_brings_back_the_card_on_top_not_the_card_underneath():
+    # RULES.md "How a box fails": Lower on a Q draws an A, so the A goes on
+    # top. A later exact match recovers that box as the A, not the Q.
+    g = game(["Q♥", "5♦"], ["A♠", "5♣", "9"], inclusive=1)
+    assert not g.play(0, LOWER).success
+    assert g.failed[0] == card("A♠")
+    assert g.play(1, HIGHER_EQUAL).recovery_pending        # 5 on 5: exact match
+    assert g.recover(0) == card("A♠") and g.box[0] == card("A♠")
 
 
 # --------------------------------------------------- Undo (tool feature) ---- #

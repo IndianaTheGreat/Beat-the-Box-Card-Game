@@ -4,9 +4,14 @@ BTB PACKAGE
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/__init__.py
 Status: ACTIVE
-Version: 1.2
+Version: 1.3
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Last Tested: 2026-10-20 (pytest: 308 passed)
+
+VERSION 1.3 CHANGES (2026-10-20):
+- Suite version 1.4.0: a recovered box comes back with the card that beat
+  it (docs/RULES.md); a big and a little joker; Cards left as a Simple
+  table or as Cards; the Assistant's card picker no longer freezes.
 
 VERSION 1.2 CHANGES (2026-10-20):
 - Suite version 1.3.0: separate Show odds / Show counts switches, a
@@ -46,4 +51,4 @@ NOTES:
 - __version__ is the suite version, separate from each file's Version.
 """
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"

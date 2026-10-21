@@ -4,9 +4,21 @@ GAME PLAYER AND GAME ASSISTANT PAGES
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/gui_game.py
 Status: ACTIVE
-Version: 1.3
+Version: 1.4
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Last Tested: 2026-10-20 (pytest: 308 passed)
+
+VERSION 1.4 CHANGES (2026-10-20):
+- Cards left has two views, Simple and Cards (widgets.CardsLeftView),
+  replacing the plain text.
+- Big and little jokers: the Assistant's picker and flip grid have a
+  button for each; flip_choices() and drawn_var use Card.key() ("🃏:big").
+  The odds table and the banner show the joker's name.
+- When the last box fails, the banner says "The box wins." followed by
+  the losing call and the card drawn, instead of only "all nine boxes
+  failed" (that moves to the line under it).
+- Failed boxes show (and recover as) the card that beat them; that is
+  the engine's rule now, nothing changed here for it.
 
 VERSION 1.3 CHANGES (2026-10-20):
 - Two switches instead of one, each for this page only: Show odds
@@ -146,7 +158,7 @@ from .engine import (
 )
 from .theme import Theme, font
 from .widgets import (
-    CardGrid, CardView, DocView, ScrollFrame, StatTile, card_name, flow_row, readable_on,
+    CardGrid, CardsLeftView, CardView, DocView, ScrollFrame, StatTile, card_name, flow_row, readable_on,
     scrolled_tree, text_width, wrap_to,
 )
 
@@ -190,10 +202,6 @@ def _percent(p: float) -> str:
     return f"{p * 100:.1f}%"
 
 
-def _rank_name(rank: int) -> str:
-    return {0: "Joker", 11: "Jack", 12: "Queen", 13: "King", 14: "Ace"}.get(rank, str(rank))
-
-
 def _why_not(card: Card, call: str, inclusive_left: int) -> str:
     """Why a call isn't offered on this card, in words (the hint line).
     The reason itself comes from the engine (call_blocked_reason)."""
@@ -220,7 +228,7 @@ def _why_not(card: Card, call: str, inclusive_left: int) -> str:
 def odds_columns() -> dict:
     """Odds-table columns: the card first, its box, the calls in button
     order, the tie chance and the best plain call."""
-    return {"card": ("Card", 58, "center"), "box": ("Box", 42, "center"),
+    return {"card": ("Card", 92, "center"), "box": ("Box", 42, "center"),
             **{call: (CALL_ARROWS[call], 60, "center") for call in CALL_ORDER},
             "exact": ("Tie", 60, "center"), "best": ("Best", 78, "center")}
 
@@ -235,7 +243,7 @@ def odds_rows(box: List[Optional[Card]], odds_all) -> List[tuple]:
         if card is None:
             rows.append((position, ("Failed", key, *[""] * blanks), None))
         elif odds is None:
-            rows.append((position, (card, key, *["-"] * blanks), None))
+            rows.append((position, (card.name, key, *["-"] * blanks), None))
         else:
             if card.is_joker:
                 best_text, best = "Sure win", 1.0
@@ -245,7 +253,7 @@ def odds_rows(box: List[Optional[Card]], odds_all) -> List[tuple]:
             keys = {"card": 15 if card.is_joker else card.rank,    # a joker beats an A
                     "box": int(key), "exact": odds.exact, "best": best,
                     **{call: odds.for_call(call) for call in CALL_ORDER}}
-            rows.append((position, (card, key, *(_percent(odds.for_call(c))
+            rows.append((position, (card.name, key, *(_percent(odds.for_call(c))
                                                  for c in CALL_ORDER),
                                     _percent(odds.exact), best_text), keys))
     return rows
@@ -652,16 +660,21 @@ class PlayerGUI:
         note.pack(anchor="w", fill="x", pady=(6, 0))
         wrap_to(note)
 
+        # Cards left: a Simple table (rank, number left, pips) or the Cards
+        # themselves (four suit rows, the ones gone faded).
         self.cards_frame = ttk.Frame(self.aids, style="Panel.TFrame")
-        cards_scroll = ttk.Scrollbar(self.cards_frame)
-        self.cards_text = tk.Text(self.cards_frame, width=24, height=10,
-                                  font=font("mono", 11), padx=10, pady=8,
-                                  yscrollcommand=cards_scroll.set)
-        cards_scroll.configure(command=self.cards_text.yview)
-        themes.style_text_widget(self.cards_text, self.theme)
-        self._text_widgets.append(self.cards_text)
-        cards_scroll.pack(side="right", fill="y", pady=(8, 0))
-        self.cards_text.pack(side="left", fill="both", expand=True, pady=(8, 0))
+        self.cards_mode = tk.StringVar(value="simple")
+        modes = ttk.Frame(self.cards_frame, style="Panel.TFrame")
+        modes.pack(anchor="w", pady=(8, 4))
+        self.cards_mode_buttons = []
+        for value, label in (("simple", "Simple"), ("cards", "Cards")):
+            button = ttk.Radiobutton(modes, text=label, value=value, variable=self.cards_mode,
+                                     style="Panel.TRadiobutton",
+                                     command=self.update_remaining_cards)
+            button.pack(side="left", padx=(0, 12))
+            self.cards_mode_buttons.append(button)
+        self.cards_view = CardsLeftView(self.cards_frame, self.theme)
+        self.cards_view.pack(fill="x")
 
         # Under the view: which switch is off, and how to turn it on.
         self.aids_note_var = tk.StringVar(value="")
@@ -828,6 +841,7 @@ class PlayerGUI:
         self.game = game
         self.selected = None
         self.history = []
+        self.last_play = ""
         self.mode = "play"
         self.layout_side()
         self.set_banner("New game: nine cards are in the box", "neutral")
@@ -929,6 +943,8 @@ class PlayerGUI:
             verdict, kind, mark = "Wrong! The box fails.", "bad", "✗"
         if result.recovery_pending:
             kind = "recover"
+        self.last_play = (f"{CALL_LABELS[result.call]} on {card_name(result.target)} → "
+                          f"drew {card_name(result.drawn)}")
         self.set_banner(f"{CALL_LABELS[result.call]} on {card_name(result.target)}  →  "
                         f"drew {card_name(result.drawn)}    {mark} {verdict}", kind)
         line = (f"{len(self.history) + 1:>2}. {CALL_SHORT[result.call]} on "
@@ -984,9 +1000,12 @@ class PlayerGUI:
             self.set_status("You got through the whole pile. Press New Game (Ctrl+N) "
                             "to play again.")
         else:
-            self.set_banner("The box wins: all nine boxes failed.", "bad")
-            self.set_status(f"{game.cards_left} cards were left in the pile. Press New Game "
-                            "(Ctrl+N) to play again.")
+            # Keep the losing play in view: what was called and what was drawn.
+            last = getattr(self, "last_play", "")
+            self.set_banner(f"The box wins. {last}" if last else
+                            "The box wins: all nine boxes failed.", "bad")
+            self.set_status(f"All nine boxes failed, with {game.cards_left} cards left in the "
+                            "pile. Press New Game (Ctrl+N) to play again.")
         self.refresh()
 
     # ----- drawing -------------------------------------------------------- #
@@ -1026,6 +1045,7 @@ class PlayerGUI:
         self.theme = theme
         for view in self.box_views:
             view.set_theme(theme)
+        self.cards_view.set_theme(theme)
         if self.picker_panel is not None:
             self.picker_panel.grid.set_theme(theme)
         self.paint()
@@ -1180,17 +1200,13 @@ class PlayerGUI:
             self.prob_tree.heading(col, text=heading + mark)
 
     def update_remaining_cards(self):
+        """Ctrl+L's view: what is left in the pile, Simple or as Cards."""
         if not self.game:
             return
-        remaining = self.game.remaining_by_rank()
-        lines = ["Cards left in the draw pile:", ""]
-        for rank in sorted(remaining, key=lambda r: (r != 0, -r)):
-            lines.append(f"{_rank_name(rank):<8}{remaining[rank]:>3}")
-        lines += ["", f"{'Total':<8}{self.game.cards_left:>3}"]
-        self.cards_text.config(state="normal")
-        self.cards_text.delete("1.0", "end")
-        self.cards_text.insert("1.0", "\n".join(lines))
-        self.cards_text.config(state="disabled")
+        pile = self.game.draw_pile
+        jokers = max(self.settings.jokers, sum(1 for card in pile if card.is_joker))
+        self.cards_view.show(pile, jokers, self.cards_mode.get())
+        self.side_scroll.update_layout()
 
     def _help(self, page: str, title: str, body: str):
         """Help opens as a page of the app; on its own, in a plain window."""
@@ -1241,35 +1257,42 @@ class AssistantGUI(PlayerGUI):
             anchor="w", pady=(0, 3))
         self.drawn_var = tk.StringVar()
         self.flip_label_var = tk.StringVar(value="Flipped: none picked")
-        self.flip_grid = CardGrid(frame, self.theme, self._flip_picked, jokers=1,
+        self.flip_grid = CardGrid(frame, self.theme, self._flip_picked, jokers=MAX_JOKERS,
                                   style="Panel.TFrame")
         self.flip_grid.pack(anchor="w")
-        # "Flipped: 7♠" sits in the joker row, beside the joker button.
+        # "Flipped: 7♠" sits in the joker row, beside the joker buttons.
         self.flip_label = ttk.Label(self.flip_grid, textvariable=self.flip_label_var,
                                     style="Panel.TLabel", font=font("ui", 12, "bold"))
         self.flip_grid.beside_jokers(self.flip_label)
+        self.flip_grid.show_jokers(0)               # until a game says how many
         self.drawn_var.trace_add("write", lambda *_: self._show_flip())
         return frame
 
+    def start(self, settings: GameSettings, game: Game, message: str):
+        """Show a flip button only for the jokers this game has."""
+        self.flip_grid.show_jokers(settings.jokers)
+        super().start(settings, game, message)
+
     def _flip_picked(self, card: Card, _button):
-        self.drawn_var.set(card.label())
+        self.drawn_var.set(card.key())
 
     def _show_flip(self):
-        label = self.drawn_var.get()
-        self.flip_grid.set_selected(label)
-        if label:
-            self.flip_label_var.set(f"Flipped: {card_name(Card.parse(label))}")
+        key = self.drawn_var.get()
+        self.flip_grid.set_selected(key)
+        if key:
+            self.flip_label_var.set(f"Flipped: {card_name(Card.parse(key))}")
         else:
             self.flip_label_var.set("Flipped: none picked")
 
     def flip_choices(self) -> List[str]:
-        """Labels of the cards that can still be flipped (one per joker kind)."""
+        """Keys (Card.key()) of the cards that can still be flipped. Each joker
+        has its own: "🃏:big" and "🃏:little"."""
         if self.game is None:
             return []
         labels: List[str] = []
         for card in sorted(self.game.draw_pile, key=lambda c: (-c.rank, c.suit)):
-            if card.label() not in labels:  # two jokers share one entry
-                labels.append(card.label())
+            if card.key() not in labels:
+                labels.append(card.key())
         return labels
 
     def on_theme(self, theme: Theme):
@@ -1323,7 +1346,7 @@ class AssistantGUI(PlayerGUI):
         return Game.from_box(box, settings.jokers, settings.inclusive_calls)
 
     def drawn_card(self):
-        label = self.drawn_var.get()
+        label = self.drawn_var.get()          # a Card.key(), e.g. "🃏:little"
         if not label:
             self.set_status("Pick the card you flipped first!")
             return False
