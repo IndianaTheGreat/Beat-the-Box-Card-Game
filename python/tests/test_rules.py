@@ -1,19 +1,25 @@
 """
 ==============================================
-RULES.MD TESTS
+RULES TESTS (docs/RULES.md)
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_rules.py
 Status: ACTIVE
-Version: 1.0
+Version: 1.1
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 135 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.1 CHANGES (2026-10-20):
+- The rules file moved to docs/RULES.md; the run command is now
+  "python -m pytest" (works with the Microsoft Store Python). No test
+  changed.
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. One test per rule in RULES.md, section by section.
 
 DESCRIPTION:
 -----------
-The executable spec. The Phase 2 TypeScript port must pass the same cases.
+The executable spec for docs/RULES.md. The Phase 2 TypeScript port must
+pass the same cases.
 Includes golden seeded deals cross-checked against a JavaScript shuffle.
 
 DEPENDENCIES:
@@ -24,9 +30,9 @@ DEPENDENCIES:
 CLI USAGE:
 ---------
 # From the python/ folder
-pytest
+python -m pytest tests/test_rules.py
 # Headless Linux, to include the GUI tests
-xvfb-run pytest
+xvfb-run python3 -m pytest
 """
 
 import pytest

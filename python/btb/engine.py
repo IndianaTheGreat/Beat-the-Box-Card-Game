@@ -4,9 +4,16 @@ BEAT THE BOX RULES ENGINE
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/engine.py
 Status: ACTIVE
-Version: 1.2
+Version: 1.3
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 254 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.3 CHANGES (2026-10-20):
+- OFFER_ORDER (the order the windows show the call buttons, and the
+  order offered_calls lists them in) is now Higher or Equal, Higher,
+  Lower, Lower or Equal: the two plain calls sit in the middle, each
+  inclusive call on the outside of its pair. Presentation only: no rule
+  changes, and docs/RULES.md is untouched.
 
 VERSION 1.2 CHANGES (2026-10-20):
 - New offered_calls(card, inclusive_left): the calls the game windows
@@ -45,7 +52,7 @@ VERSION 1.0 CHANGES (2026-10-20):
 
 DESCRIPTION:
 -----------
-Pure Python implementation of RULES.md, the single source of truth. No
+Pure Python implementation of docs/RULES.md, the single source of truth. No
 Tkinter imports. Every tool (Player, Assistant, Simulator, Optimizer)
 plays through this module, and the Phase 2 TypeScript engine must match
 it behaviour for behaviour.
@@ -318,7 +325,9 @@ def call_wins(call: str, drawn: Card, target: Card) -> bool:
 LOWEST_RANK, HIGHEST_RANK = RANKS[0], RANKS[-1]
 
 
-OFFER_ORDER = (HIGHER, HIGHER_EQUAL, LOWER, LOWER_EQUAL)   # button order: Higher pair, Lower pair
+# Button order, left to right: the Higher pair, then the Lower pair, with the
+# plain calls in the middle (▲= ▲ ▼ ▼=).
+OFFER_ORDER = (HIGHER_EQUAL, HIGHER, LOWER, LOWER_EQUAL)
 
 # Why a call is not offered (call_blocked_reason). The windows turn these
 # codes into words; the TypeScript port uses the same codes.

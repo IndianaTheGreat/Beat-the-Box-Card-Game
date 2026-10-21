@@ -4,9 +4,25 @@ GAME PLAYER AND GAME ASSISTANT PAGES
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/gui_game.py
 Status: ACTIVE
-Version: 1.2
+Version: 1.3
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 254 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.3 CHANGES (2026-10-20):
+- Two switches instead of one, each for this page only: Show odds
+  (Ctrl+O) for the odds under the cards and the odds table, and Show
+  counts (new Ctrl+K) for the card counts, the plays and the cards left.
+  Picking a side view whose switch is off (or Ctrl+P / Ctrl+L) turns it
+  on, and a line under the view says which switch is off. Defaults come
+  from Settings (show_odds, show_counts). In a narrow window the toolbar
+  labels shorten to "Odds" and "Counts".
+- Odds table: the card is the first column, then the box. It starts
+  sorted by Best, highest first; clicking a heading sorts by it, highest
+  first, then lowest first, then back to box order (7 8 9 / 4 5 6 /
+  1 2 3), and the heading shows ↓ or ↑. Failed boxes stay at the bottom.
+- Call buttons in the new engine order: ▲= Higher or Equal, ▲ Higher,
+  ▼ Lower, ▼= Lower or Equal.
+- Help on its own (no app) opens in a DocView window, like the app pages.
 
 VERSION 1.2 CHANGES (2026-10-20):
 - Pages, not pop-ups: each tool builds inside the frame it is given (a
@@ -92,8 +108,10 @@ KEY FUNCTIONS:
 - GameSetupPanel -> the New Game settings, beside the board
 - CardPickerPanel -> pick the nine box cards (Assistant), beside the board
 - PlayerGUI(parent, app).new_game / box_clicked / make_call / undo /
-  skip_recovery / toggle_odds / show_probabilities / show_remaining_cards /
-  update_side_view
+  skip_recovery / toggle_odds / toggle_counts / show_probabilities /
+  show_remaining_cards / choose_view / sort_odds / update_side_view
+- odds_columns(), odds_rows(box, odds), sort_odds_rows(rows, column, mode)
+  -> the odds table's columns, rows and sorting
 - AssistantGUI -> same page plus the flipped-card grid
 
 ERROR HANDLING:
@@ -128,13 +146,13 @@ from .engine import (
 )
 from .theme import Theme, font
 from .widgets import (
-    CardGrid, CardView, ScrollFrame, StatTile, card_name, flow_row, readable_on,
+    CardGrid, CardView, DocView, ScrollFrame, StatTile, card_name, flow_row, readable_on,
     scrolled_tree, text_width, wrap_to,
 )
 
 CONTROL_MASK = 0x0004
 
-CALL_ORDER = OFFER_ORDER          # Higher pair, then Lower pair (engine.OFFER_ORDER)
+CALL_ORDER = OFFER_ORDER          # ▲= ▲ ▼ ▼=: plain calls in the middle (engine.OFFER_ORDER)
 CALL_KEYS = {HIGHER: "W", LOWER: "S", HIGHER_EQUAL: "D", LOWER_EQUAL: "A"}
 CALL_ARROWS = {HIGHER: "▲", LOWER: "▼", HIGHER_EQUAL: "▲=", LOWER_EQUAL: "▼="}
 CALL_SHORT = {HIGHER: "Higher", LOWER: "Lower", HIGHER_EQUAL: "Higher/Eq",
@@ -143,6 +161,7 @@ POSITION_LABELS = {pos: key for key, pos in text.POSITION_KEYS.items()}
 
 BANNER_KINDS = ("neutral", "good", "bad", "recover")
 SIDE_VIEWS = (("count", "Count & plays"), ("odds", "Odds table"), ("cards", "Cards left"))
+VIEW_SWITCH = {"count": "counts", "odds": "odds", "cards": "counts"}   # the switch each needs
 TEXT_INPUTS = (tk.Entry, ttk.Entry, tk.Text, tk.Spinbox)  # ttk.Combobox is a ttk.Entry
 
 
@@ -192,6 +211,56 @@ def _why_not(card: Card, call: str, inclusive_left: int) -> str:
         return "Nothing is higher than an A: call Lower" + (
             " (or Higher or Equal, which wins on a tie)." if tie else ".")
     return ""
+
+
+# --------------------------------------------------------------------------- #
+# The odds table
+# --------------------------------------------------------------------------- #
+
+def odds_columns() -> dict:
+    """Odds-table columns: the card first, its box, the calls in button
+    order, the tie chance and the best plain call."""
+    return {"card": ("Card", 58, "center"), "box": ("Box", 42, "center"),
+            **{call: (CALL_ARROWS[call], 60, "center") for call in CALL_ORDER},
+            "exact": ("Tie", 60, "center"), "best": ("Best", 78, "center")}
+
+
+def odds_rows(box: List[Optional[Card]], odds_all) -> List[tuple]:
+    """(position, values shown, sort keys by column) for each box. Sort
+    keys are None for a failed box (it has no odds), so it sorts last."""
+    blanks = len(CALL_ORDER) + 2
+    rows = []
+    for position, (card, odds) in enumerate(zip(box, odds_all)):
+        key = POSITION_LABELS[position]
+        if card is None:
+            rows.append((position, ("Failed", key, *[""] * blanks), None))
+        elif odds is None:
+            rows.append((position, (card, key, *["-"] * blanks), None))
+        else:
+            if card.is_joker:
+                best_text, best = "Sure win", 1.0
+            else:
+                call, best = odds.best_plain()
+                best_text = f"{CALL_ARROWS[call]} {_percent(best)}"
+            keys = {"card": 15 if card.is_joker else card.rank,    # a joker beats an A
+                    "box": int(key), "exact": odds.exact, "best": best,
+                    **{call: odds.for_call(call) for call in CALL_ORDER}}
+            rows.append((position, (card, key, *(_percent(odds.for_call(c))
+                                                 for c in CALL_ORDER),
+                                    _percent(odds.exact), best_text), keys))
+    return rows
+
+
+def sort_odds_rows(rows: List[tuple], column: str, mode: str) -> List[tuple]:
+    """Sort odds_rows() by `column`: "desc" highest first, "asc" lowest
+    first, "box" in box order (7 8 9 / 4 5 6 / 1 2 3). Ties keep box
+    order; rows with no odds (failed boxes) always come last."""
+    in_order = sorted(rows, key=lambda row: row[0])
+    live = [row for row in in_order if row[2] is not None]
+    dead = [row for row in in_order if row[2] is None]
+    if mode != "box":
+        live.sort(key=lambda row: row[2][column], reverse=(mode == "desc"))
+    return live + dead
 
 
 # --------------------------------------------------------------------------- #
@@ -358,7 +427,9 @@ class PlayerGUI:
         self.boxes_var = tk.StringVar(value="-")
         self.count_vars = [tk.StringVar(value="0") for _ in COUNT_METHOD_NAMES]
         self.lean_var = tk.StringVar(value="")
-        self.odds_var = tk.BooleanVar(value=bool(app_settings.get("show_odds")))
+        defaults = app_settings.load()
+        self.odds_var = tk.BooleanVar(value=bool(defaults["show_odds"]))
+        self.counts_var = tk.BooleanVar(value=bool(defaults["show_counts"]))
         self.side_view = tk.StringVar(value="count")
 
         self.frame = ttk.Frame(parent, padding=14)
@@ -381,9 +452,13 @@ class PlayerGUI:
         toolbar.grid(row=0, column=0, columnspan=2, sticky="ew")
         self.heading_label = ttk.Label(toolbar, text=self.HEADING, style="Heading.TLabel")
         self.heading_label.pack(side="left")
-        odds_check = ttk.Checkbutton(toolbar, text="Show odds & counts (Ctrl+O)",
+        counts_check = ttk.Checkbutton(toolbar, text="Show counts (Ctrl+K)",
+                                       variable=self.counts_var, command=self.on_counts_changed)
+        counts_check.pack(side="right", padx=(10, 0))
+        odds_check = ttk.Checkbutton(toolbar, text="Show odds (Ctrl+O)",
                                      variable=self.odds_var, command=self.on_odds_changed)
         odds_check.pack(side="right", padx=(10, 0))
+        self.odds_check, self.counts_check = odds_check, counts_check
         undo_button = ttk.Button(toolbar, text="Undo (Ctrl+Z)", command=self.undo)
         undo_button.pack(side="right", padx=4)
         new_button = ttk.Button(toolbar, text="New Game (Ctrl+N)", style="Accent.TButton",
@@ -392,7 +467,7 @@ class PlayerGUI:
         # In a narrow window the toolbar drops the shortcut hints.
         self._toolbar_labels = []
         for widget, short in ((new_button, "New Game"), (undo_button, "Undo"),
-                              (odds_check, "Odds & counts")):
+                              (odds_check, "Odds"), (counts_check, "Counts")):
             long = str(widget.cget("text"))
             long_width = widget.winfo_reqwidth()
             widget.configure(text=short)
@@ -484,7 +559,7 @@ class PlayerGUI:
         if width <= 1:
             return
         need = self.heading_label.winfo_reqwidth() + sum(
-            long_width for *_rest, long_width in self._toolbar_labels) + 30   # + gaps
+            long_width for *_rest, long_width in self._toolbar_labels) + 40   # + gaps
         short = width < need
         if short != self.toolbar_short:
             self.toolbar_short = short
@@ -522,14 +597,16 @@ class PlayerGUI:
         self.picker_panel: Optional[CardPickerPanel] = None
         self.extra_panel = self.build_side_extra(side)
 
-        # Odds & counts: one switch (Ctrl+O) for the count, the plays and the
-        # odds; Ctrl+P / Ctrl+L show the odds table / cards left in the same place.
+        # Two switches: Show odds (Ctrl+O) for the odds table, Show counts
+        # (Ctrl+K) for the count & plays and the cards left. Picking a view
+        # (or Ctrl+P / Ctrl+L) turns on the switch it needs.
         self.aids = ttk.Frame(side, style="Panel.TFrame", padding=(12, 6))
         self.views = views = ttk.Frame(self.aids, style="Panel.TFrame")
         views.pack(fill="x")
         self.view_buttons = [
             ttk.Radiobutton(views, text=label, value=value, variable=self.side_view,
-                            style="Panel.TRadiobutton", command=self.layout_side)
+                            style="Panel.TRadiobutton",
+                            command=lambda v=value: self.choose_view(v))
             for value, label in SIDE_VIEWS]
         flow_row(views, self.view_buttons)
 
@@ -560,15 +637,17 @@ class PlayerGUI:
         scroll.pack(side="right", fill="y")
 
         self.odds_frame = ttk.Frame(self.aids, style="Panel.TFrame")
-        columns = {"box": ("Box", 42, "center"), "card": ("Card", 58, "center"),
-                   **{call: (CALL_ARROWS[call], 60, "center") for call in CALL_ORDER},
-                   "exact": ("Tie", 60, "center"), "best": ("Best", 78, "center")}
-        holder, self.prob_tree = scrolled_tree(self.odds_frame, columns, height=9,
+        holder, self.prob_tree = scrolled_tree(self.odds_frame, odds_columns(), height=9,
                                                style="Panel.TFrame")
+        self.odds_sort = ("best", "desc")      # Best first, highest at the top
+        for col in self.prob_tree["columns"]:
+            self.prob_tree.heading(col, command=lambda c=col: self.sort_odds(c))
+        self._label_odds_headings()
         holder.pack(fill="both", expand=True, pady=(8, 0))
         note = ttk.Label(self.odds_frame, text="Chance each call wins against the cards still "
                          "in the pile. Tie = exact match or joker: the recovery chance on an "
-                         "inclusive call. Best = the better plain call.",
+                         "inclusive call. Best = the better plain call. Click a heading to "
+                         "sort: highest first, then lowest first, then by box.",
                          style="PanelMuted.TLabel", wraplength=360)
         note.pack(anchor="w", fill="x", pady=(6, 0))
         wrap_to(note)
@@ -584,16 +663,23 @@ class PlayerGUI:
         cards_scroll.pack(side="right", fill="y", pady=(8, 0))
         self.cards_text.pack(side="left", fill="both", expand=True, pady=(8, 0))
 
+        # Under the view: which switch is off, and how to turn it on.
+        self.aids_note_var = tk.StringVar(value="")
+        self.aids_note = ttk.Label(self.aids, textvariable=self.aids_note_var,
+                                   style="PanelMuted.TLabel", wraplength=300)
+        wrap_to(self.aids_note)
+
         self.aids_hint = ttk.Frame(side, style="Panel.TFrame", padding=(12, 10))
-        hint = ttk.Label(self.aids_hint, text="Odds, card count and plays are hidden. "
-                         "Show them with Ctrl+O (Show odds & counts).",
-                         style="PanelMuted.TLabel", wraplength=300)
+        hint = ttk.Label(self.aids_hint, text="Odds and card counts are hidden. Show odds "
+                         "(Ctrl+O) adds the chances under each card and the odds table. "
+                         "Show counts (Ctrl+K) adds the card counts, your plays and the "
+                         "cards left.", style="PanelMuted.TLabel", wraplength=300)
         hint.pack(anchor="w", fill="x")
         wrap_to(hint)
         self.layout_side()
 
     def build_side_extra(self, side: ttk.Frame) -> Optional[ttk.Frame]:
-        """Hook for subclasses: a panel between the tiles and the odds & counts."""
+        """Hook for subclasses: a panel between the tiles and the odds and counts views."""
         return None
 
     def layout_side(self):
@@ -616,15 +702,40 @@ class PlayerGUI:
             return
         if self.extra_panel is not None:
             self.extra_panel.pack(fill="x", pady=(10, 0))
-        if self.odds_var.get():
+        self.aids_note.pack_forget()
+        available = self.available_views()
+        if available:
+            if self.side_view.get() not in available:
+                self.side_view.set(available[0])
             self.aids.pack(fill="both", expand=True, pady=(10, 0))
             view = {"count": self.count_frame, "odds": self.odds_frame,
                     "cards": self.cards_frame}[self.side_view.get()]
             view.pack(fill="both", expand=True)
+            note = ("Card counts are hidden: Show counts (Ctrl+K)."
+                    if not self.counts_var.get() else
+                    "Odds are hidden: Show odds (Ctrl+O)." if not self.odds_var.get() else "")
+            self.aids_note_var.set(note)
+            if note:
+                self.aids_note.pack(anchor="w", fill="x", pady=(6, 2))
             self.update_side_view()
         else:
             self.aids_hint.pack(fill="x", pady=(10, 0))
         self.side_scroll.update_layout()
+
+    def available_views(self) -> List[str]:
+        """The side views whose switch is on, in tab order."""
+        on = {"odds": bool(self.odds_var.get()), "counts": bool(self.counts_var.get())}
+        return [value for value, _label in SIDE_VIEWS if on[VIEW_SWITCH[value]]]
+
+    def choose_view(self, view: str):
+        """A view picked in the side panel: turn on its switch if needed."""
+        self.side_view.set(view)
+        self._switch_for(view).set(True)
+        self.layout_side()
+        self.refresh()
+
+    def _switch_for(self, view: str) -> tk.BooleanVar:
+        return self.odds_var if VIEW_SWITCH[view] == "odds" else self.counts_var
 
     def _wrap_banner(self, _event=None):
         """Wrap the banner text to the space left beside the Skip button."""
@@ -921,19 +1032,30 @@ class PlayerGUI:
         self.refresh()
 
     def toggle_odds(self):
+        """Ctrl+O: the odds under the cards and the odds table."""
         self.odds_var.set(not self.odds_var.get())
         self.on_odds_changed()
 
+    def toggle_counts(self):
+        """Ctrl+K: the card counts, the plays and the cards left."""
+        self.counts_var.set(not self.counts_var.get())
+        self.on_counts_changed()
+
     def on_odds_changed(self):
-        """Odds & counts on or off for this page only; Settings holds the default."""
+        """Odds on or off for this page only; Settings holds the default."""
+        self.layout_side()
+        self.refresh()
+
+    def on_counts_changed(self):
+        """Counts on or off for this page only; Settings holds the default."""
         self.layout_side()
         self.refresh()
 
     def refresh(self):
         self.side_scroll.update_layout()
         game = self.game
-        aids = bool(self.odds_var.get())
-        odds = game.odds_all() if (game and aids and not game.is_over) else None
+        show_odds = bool(self.odds_var.get())
+        odds = game.odds_all() if (game and show_odds and not game.is_over) else None
         if self.mode != "pick":
             for i, view in enumerate(self.box_views):
                 self._show_box(i, view, odds)
@@ -1003,26 +1125,24 @@ class PlayerGUI:
     def _show_side_view(self, view: str):
         if not self._need_game():
             return
-        self.side_view.set(view)
-        if not self.odds_var.get():
-            self.odds_var.set(True)
-        self.layout_side()
-        self.refresh()
+        self.choose_view(view)
 
     def show_probabilities(self):
-        """Ctrl+P: the full odds table, beside the board."""
+        """Ctrl+P: the full odds table, beside the board (turns odds on)."""
         self._show_side_view("odds")
 
     def show_remaining_cards(self):
-        """Ctrl+L: how many of each rank are left, beside the board."""
+        """Ctrl+L: how many of each rank are left, beside the board (turns
+        counts on)."""
         self._show_side_view("cards")
 
     def update_side_view(self, odds=None):
         """Fill only the side view that is showing (the odds table or the
         cards left); the hidden one is filled when it is switched to."""
-        if self.game is None or not self.odds_var.get() or self.mode != "play":
-            return
         view = self.side_view.get()
+        if (self.game is None or self.mode != "play"
+                or not self._switch_for(view).get()):
+            return
         if view == "odds":
             self.update_probabilities(odds)
         elif view == "cards":
@@ -1030,26 +1150,34 @@ class PlayerGUI:
         self.side_scroll.update_layout()
 
     def update_probabilities(self, odds_all=None):
+        """Fill the odds table, sorted as chosen (Best, highest first, at
+        the start). Failed boxes always go last, in box order."""
         if not self.game:
             return
         tree = self.prob_tree
         tree.delete(*tree.get_children())
-        blanks = len(CALL_ORDER) + 2
-        for i, (card, odds) in enumerate(zip(self.game.box, odds_all or self.game.odds_all())):
-            box = POSITION_LABELS[i]
-            if card is None:
-                tree.insert("", "end", values=(box, "Failed", *[""] * blanks))
-            elif odds is None:
-                tree.insert("", "end", values=(box, card, *["-"] * blanks))
-            else:
-                if card.is_joker:
-                    best = "Sure win"
-                else:
-                    call, chance = odds.best_plain()
-                    best = f"{CALL_ARROWS[call]} {_percent(chance)}"
-                tree.insert("", "end", values=(
-                    box, card, *(_percent(odds.for_call(c)) for c in CALL_ORDER),
-                    _percent(odds.exact), best))
+        rows = odds_rows(self.game.box, odds_all or self.game.odds_all())
+        for _position, values, _keys in sort_odds_rows(rows, *self.odds_sort):
+            tree.insert("", "end", values=values)
+
+    def sort_odds(self, column: str):
+        """A click on an odds-table heading: highest first, then lowest
+        first, then back to box order (7 8 9 / 4 5 6 / 1 2 3)."""
+        current, mode = self.odds_sort
+        if column != current:
+            mode = "desc"
+        else:
+            mode = {"desc": "asc", "asc": "box", "box": "desc"}[mode]
+        self.odds_sort = (column, mode)
+        self._label_odds_headings()
+        self.update_probabilities()
+
+    def _label_odds_headings(self):
+        """Mark the sorted column: ↓ highest first, ↑ lowest first."""
+        column, mode = self.odds_sort
+        for col, (heading, _w, _a) in odds_columns().items():
+            mark = {"desc": " ↓", "asc": " ↑"}.get(mode, "") if col == column else ""
+            self.prob_tree.heading(col, text=heading + mark)
 
     def update_remaining_cards(self):
         if not self.game:
@@ -1070,15 +1198,10 @@ class PlayerGUI:
             return self.app.show_page(page)
         win = tk.Toplevel(self.root)
         win.title(title)
-        win.geometry("660x620")
+        win.geometry("700x620")
         themes.paint_window(win, self.theme)
         self._windows.append(win)
-        widget = tk.Text(win, wrap="word", font=font("mono", 10), padx=12, pady=10)
-        themes.style_text_widget(widget, self.theme)
-        self._text_widgets.append(widget)
-        widget.pack(fill="both", expand=True, padx=10, pady=10)
-        widget.insert("1.0", body)
-        widget.config(state="disabled")
+        DocView(win, body).pack(fill="both", expand=True, padx=10, pady=10)
         return win
 
     def show_rules(self):

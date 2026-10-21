@@ -4,9 +4,17 @@ ONE-WINDOW APP, CALL BUTTONS AND RESIZING TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_pages_and_controls.py
 Status: ACTIVE
-Version: 1.0
+Version: 1.1
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 254 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.1 CHANGES (2026-10-20):
+- Calls offered in the new button order (▲= ▲ ▼ ▼=; keys D W S A).
+- Show odds (Ctrl+O) and Show counts (Ctrl+K) are separate switches;
+  Ctrl+P / Ctrl+L and picking a view turn on the one they need; the
+  toolbar shortens their labels when narrow.
+- Every page fits and settles with its Advanced charts showing too; only
+  scroll panels that are on screen are checked.
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. The calls the game offers (greyed-out buttons) and why, the button
@@ -48,7 +56,7 @@ KEY FUNCTIONS:
 CLI USAGE:
 ---------
 # From the python/ folder
-pytest tests/test_pages_and_controls.py
+python -m pytest tests/test_pages_and_controls.py
 """
 
 import random
@@ -67,9 +75,9 @@ from helpers import card, game
 # ------------------------------------------------------ calls the game offers -- #
 
 def test_offered_calls_leave_out_dead_calls_on_a_2_and_an_ace():
-    assert offered_calls(card("2"), 3) == (HIGHER, HIGHER_EQUAL, LOWER_EQUAL)
-    assert offered_calls(card("A"), 3) == (HIGHER, HIGHER_EQUAL, LOWER, LOWER_EQUAL)[1:]
-    assert offered_calls(card("8"), 3) == (HIGHER, HIGHER_EQUAL, LOWER, LOWER_EQUAL)
+    assert offered_calls(card("2"), 3) == (HIGHER_EQUAL, HIGHER, LOWER_EQUAL)
+    assert offered_calls(card("A"), 3) == (HIGHER_EQUAL, LOWER, LOWER_EQUAL)
+    assert offered_calls(card("8"), 3) == (HIGHER_EQUAL, HIGHER, LOWER, LOWER_EQUAL)
 
 
 def test_offered_calls_drop_inclusive_calls_when_none_are_left():
@@ -143,7 +151,7 @@ def press(app, root, key):
 def test_call_buttons_are_paired_by_direction(tk_root, app, no_dialogs):
     player = app.show_page("player")
     order = sorted(player.call_buttons, key=lambda c: int(player.call_buttons[c].grid_info()["column"]))
-    assert order == [HIGHER, HIGHER_EQUAL, LOWER, LOWER_EQUAL]
+    assert order == [HIGHER_EQUAL, HIGHER, LOWER, LOWER_EQUAL]     # ▲= ▲ ▼ ▼=
     styles = {c: str(player.call_buttons[c].cget("style")) for c in order}
     assert styles[HIGHER] == styles[HIGHER_EQUAL] and styles[HIGHER].endswith("CallUp.TButton")
     assert styles[LOWER] == styles[LOWER_EQUAL] and styles[LOWER].endswith("CallDown.TButton")
@@ -178,7 +186,7 @@ def test_shortcuts_are_listed_in_button_order():
     listed = [(keys, calls[action]) for keys, _desc, action, _seq in text.SHORTCUTS
               if action in calls]
     assert [call for _keys, call in listed] == list(OFFER_ORDER)   # the buttons' order
-    assert [keys for keys, _call in listed] == ["W", "D", "S", "A"]
+    assert [keys for keys, _call in listed] == ["D", "W", "S", "A"]
 
 
 def test_dead_calls_are_greyed_out_and_explained(tk_root, app, no_dialogs):
@@ -202,17 +210,55 @@ def test_dead_calls_are_greyed_out_and_explained(tk_root, app, no_dialogs):
     assert not player.call_buttons[HIGHER].instate(["disabled"])   # joker playable again
 
 
-def test_show_odds_and_counts_switches_the_aids_together(tk_root, app, no_dialogs):
+def test_show_odds_and_show_counts_are_separate_switches(tk_root, app, no_dialogs):
     player = app.show_page("player")
     player.game = game(["8"], ["2", "9", "Q", "A"])
     player.refresh()
     pump(tk_root)
     assert player.aids_hint.winfo_manager() == "pack" and not player.aids.winfo_manager()
     assert player.box_views[0].footer_right == ""
-    press(app, tk_root, "<Control-o>")
-    assert player.aids.winfo_manager() == "pack" and player.count_frame.winfo_manager() == "pack"
+    press(app, tk_root, "<Control-o>")                      # odds only
     assert player.box_views[0].footer_right == "▲75% ▼25%"
+    assert player.side_view.get() == "odds" and player.odds_frame.winfo_manager() == "pack"
+    assert not player.count_frame.winfo_manager()
+    assert "Ctrl+K" in player.aids_note_var.get()           # says how to get the counts
+    press(app, tk_root, "<Control-k>")                      # and counts
+    assert player.counts_var.get() and player.aids_note_var.get() == ""
+    press(app, tk_root, "<Control-o>")                      # counts only: no odds anywhere
+    assert player.box_views[0].footer_right == ""
+    assert player.side_view.get() == "count" and player.count_frame.winfo_manager() == "pack"
+    assert "Ctrl+O" in player.aids_note_var.get()
+    press(app, tk_root, "<Control-p>")                      # Ctrl+P turns the odds back on
+    assert player.odds_var.get() and player.side_view.get() == "odds"
+    press(app, tk_root, "<Control-k>")
+    press(app, tk_root, "<Control-l>")                      # Ctrl+L turns the counts back on
+    assert player.counts_var.get() and player.side_view.get() == "cards"
     assert player.cards_remaining_var.get() == "4"           # tiles always show
+
+
+def test_picking_a_hidden_view_turns_its_switch_on(tk_root, app, no_dialogs):
+    player = app.show_page("player")
+    player.game = game(["8"], ["2", "9", "Q", "A"])
+    player.odds_var.set(True)
+    player.on_odds_changed()
+    count_button = player.view_buttons[0]                   # "Count & plays"
+    count_button.invoke()
+    assert player.counts_var.get() and player.side_view.get() == "count"
+
+
+def test_toolbar_switches_have_short_labels_when_narrow(tk_root, app, no_dialogs):
+    player = app.show_page("player")
+    app.root.geometry("960x620")
+    pump(tk_root)
+    tk_root.after(100)
+    pump(tk_root)
+    labels = {str(player.odds_check.cget("text")), str(player.counts_check.cget("text"))}
+    assert labels == {"Odds", "Counts"}                    # too narrow for the hints
+    app.root.geometry("1600x700")
+    pump(tk_root)
+    tk_root.after(100)
+    pump(tk_root)
+    assert str(player.counts_check.cget("text")) == "Show counts (Ctrl+K)"
 
 
 def test_pages_keep_their_state_and_only_the_page_showing_takes_keys(tk_root, app, no_dialogs):
@@ -396,7 +442,9 @@ def test_hidden_side_views_are_filled_when_shown(tk_root, app, no_dialogs):
     player = app.show_page("player")
     player.new_game(GameSettings(0, 5))
     player.odds_var.set(True)
+    player.counts_var.set(True)
     player.on_odds_changed()
+    assert player.side_view.get() == "count"
     assert not player.prob_tree.get_children()             # count view: table not filled
     player.show_probabilities()
     assert len(player.prob_tree.get_children()) == 9
@@ -519,8 +567,9 @@ def reachable(widget, window) -> bool:
 
 
 def scroll_frames(widget):
+    """Every ScrollFrame showing on screen (one on a hidden tab isn't laid out)."""
     from btb.widgets import ScrollFrame
-    found = [widget] if isinstance(widget, ScrollFrame) else []
+    found = [widget] if isinstance(widget, ScrollFrame) and widget.winfo_ismapped() else []
     for child in widget.winfo_children():
         found += scroll_frames(child)
     return found
@@ -558,6 +607,7 @@ def test_every_page_fits_and_settles(tk_root, app, no_dialogs, size):
         page = app.show_page(key)
         if key in ("player", "assistant"):
             page.odds_var.set(True)
+            page.counts_var.set(True)
             if key == "player":
                 page.new_game(GameSettings(1, 5))
             else:
@@ -587,3 +637,12 @@ def test_every_page_fits_and_settles(tk_root, app, no_dialogs, size):
             assert settle(tk_root) < 3000
             for frame in scroll_frames(page.frame):
                 assert scroll_matches(frame), f"{key}: a panel's scrollbar is stale at {size}"
+        if key in ("simulator", "optimizer"):          # the Advanced tab's charts
+            page.notebook.select(page.advanced_tab)
+            pump(tk_root)
+            tk_root.after(100)
+            assert settle(tk_root) < 3000, f"{key} Advanced keeps re-laying out at {size}"
+            charts = page.advanced_charts
+            assert charts.winfo_ismapped() and scroll_matches(charts)
+            assert reachable(page.adv_charts[0].canvas, app.root)
+            page.notebook.select(0)

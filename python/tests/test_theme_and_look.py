@@ -4,9 +4,13 @@ THEME AND NEW-LOOK TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_theme_and_look.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 254 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.2 CHANGES (2026-10-20):
+- Settings save show_counts too, and new pages take both defaults (odds
+  and counts) from Settings.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - Updated for the one-window app: the theme is chosen on the Settings
@@ -41,7 +45,7 @@ KEY FUNCTIONS:
 CLI USAGE:
 ---------
 # From the python/ folder
-pytest tests/test_theme_and_look.py
+python -m pytest tests/test_theme_and_look.py
 """
 
 import re
@@ -163,8 +167,11 @@ def test_odds_toggle_shows_odds_under_the_cards_and_is_remembered(tk_root, windo
 def test_new_game_windows_start_from_the_settings_default(tk_root, no_dialogs):
     from btb.gui_game import AssistantGUI, PlayerGUI
     settings.update(show_odds=True)
-    assert PlayerGUI(tk.Toplevel(tk_root)).odds_var.get() is True
-    assert AssistantGUI(tk.Toplevel(tk_root)).odds_var.get() is True
+    player = PlayerGUI(tk.Toplevel(tk_root))
+    assert player.odds_var.get() is True and player.counts_var.get() is False
+    settings.update(show_counts=True)
+    assistant = AssistantGUI(tk.Toplevel(tk_root))
+    assert assistant.odds_var.get() is True and assistant.counts_var.get() is True
 
 
 def test_help_windows_repaint_and_closed_ones_are_forgotten(tk_root, window, no_dialogs):
@@ -262,7 +269,9 @@ def test_settings_window_saves_and_switches_theme(tk_root, no_dialogs):
     dialog = app.open_settings()
     dialog.theme_var.set("Slate")
     dialog.odds_var.set(True)
+    dialog.counts_var.set(True)
     dialog.cores_var.set("1")
     dialog.save()
-    assert settings.load() == {"theme": "Slate", "show_odds": True, "cpu_workers": 1}
+    assert settings.load() == {"theme": "Slate", "show_odds": True, "show_counts": True,
+                               "cpu_workers": 1}
     assert themes.current().name == "Slate"

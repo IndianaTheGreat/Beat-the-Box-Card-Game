@@ -4,9 +4,13 @@ GUI SMOKE TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_gui.py
 Status: ACTIVE
-Version: 1.2
+Version: 1.3
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 254 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.3 CHANGES (2026-10-20):
+- The odds table has the card first and starts sorted by Best; new test
+  for sorting by a heading (highest, lowest, then box order).
 
 VERSION 1.2 CHANGES (2026-10-20):
 - The Assistant's nine-card picker is checked on the page, and bad input
@@ -39,9 +43,9 @@ DEPENDENCIES:
 CLI USAGE:
 ---------
 # From the python/ folder
-pytest
+python -m pytest tests/test_gui.py
 # Headless Linux, to include the GUI tests
-xvfb-run pytest
+xvfb-run python3 -m pytest
 """
 
 import pytest
@@ -118,13 +122,52 @@ def test_probability_window_tracks_the_game(tk_root, window, no_dialogs):
     gui.game = game(["8", "🃏"], ["2", "9", "Q", "A"])
     gui.show_probabilities()
     rows = [gui.prob_tree.item(i, "values") for i in gui.prob_tree.get_children()]
-    # Columns follow the buttons: box, card, ▲, ▲=, ▼, ▼=, tie, best plain call.
-    assert rows[0][2:6] == ("75.0%", "75.0%", "25.0%", "25.0%")
-    assert rows[0][7] == "▲ 75.0%" and rows[1][2] == "100.0%" and rows[1][7] == "Sure win"
+    # Columns: card, box, then the calls in button order (▲=, ▲, ▼, ▼=), tie,
+    # best plain call. Rows: best chance first (the joker is a sure win).
+    assert rows[0][:2] == ("🃏", "8") and rows[0][3] == "100.0%" and rows[0][7] == "Sure win"
+    assert rows[1][:2] == ("8♠", "7")
+    assert rows[1][2:6] == ("75.0%", "75.0%", "25.0%", "25.0%") and rows[1][7] == "▲ 75.0%"
     gui.box_clicked(0)
     gui.make_call(HIGHER)              # draws the 2: box 0 fails
     rows = [gui.prob_tree.item(i, "values") for i in gui.prob_tree.get_children()]
-    assert rows[0][1] == "Failed"
+    assert rows[-1][:2] == ("Failed", "7")       # failed boxes sort last
+
+
+def test_odds_table_headings_sort_high_low_then_by_box(tk_root, window, no_dialogs):
+    # A click sorts highest first, the next lowest first, the next by box
+    # (7 8 9 / 4 5 6 / 1 2 3); a new column starts again at highest first.
+    from btb.gui_game import PlayerGUI
+    gui = PlayerGUI(window)
+    gui.game = game(["5", "K", "2", "9", "8", "4", "Q", "J", "3"], ["6", "10", "7", "A"])
+    gui.show_probabilities()
+
+    def column(name):
+        return [gui.prob_tree.set(i, name) for i in gui.prob_tree.get_children()]
+
+    def best():
+        return [float(v.split()[-1].rstrip("%")) for v in column("best")]
+
+    assert best() == sorted(best(), reverse=True)            # the default: Best ↓
+    assert gui.prob_tree.heading("best", "text") == "Best ↓"
+    gui.sort_odds("best")
+    assert best() == sorted(best())                          # lowest first
+    gui.sort_odds("best")
+    assert column("box") == list("789456123")                # box order
+    assert gui.prob_tree.heading("best", "text") == "Best"
+    gui.sort_odds("card")
+    assert column("card")[0] == "K♥" and column("card")[-1] == "2♦"
+    gui.sort_odds("box")
+    assert column("box") == sorted(column("box"), reverse=True)
+    gui.box_clicked(0)
+    gui.make_call(HIGHER)                                    # stays sorted after a play
+    assert column("box") == sorted(column("box"), reverse=True)
+    gui.box_clicked(1)
+    gui.make_call(HIGHER)                                    # K -> 10: box 8 fails
+    for _ in range(2):
+        gui.sort_odds("box")                                 # lowest first, then box order
+    assert gui.odds_sort == ("box", "box")
+    assert column("card")[-1] == "Failed" and column("box")[-1] == "8"
+    assert column("box")[:-1] == [b for b in "79456123"]     # failed box last, even here
 
 
 def test_new_game_with_real_deck(tk_root, window, no_dialogs):

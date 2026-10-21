@@ -4,9 +4,16 @@ BATCH SIMULATION AND SWEEPS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/sim.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.2 CHANGES (2026-10-20):
+- New chart helpers, still with no GUI code: distribution(counter, low,
+  high) gives every value in a range with its share (missing values as
+  0%), and best_curves(results, x, by) gives, for each joker count, the
+  best configuration at each threshold (or inclusive-call count). The
+  Advanced tabs draw their charts from these.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - Memory: per-game lists replaced by tallies (Counter), so a run of ten
@@ -58,6 +65,8 @@ KEY FUNCTIONS:
 - wilson_interval(wins, games) -> (low %, high %)
 - counter_mean / counter_min / counter_max -> statistics of a tally
 - float_range(start, stop, step) -> inclusive list of floats
+- distribution(counter, low, high) -> [(value, % of the total)] for charts
+- best_curves(results, x, by) -> {group: [best result at each x value]}
 
 ERROR HANDLING:
 --------------
@@ -118,6 +127,38 @@ def counter_min(counter: Counter) -> int:
 
 def counter_max(counter: Counter) -> int:
     return max((k for k, v in counter.items() if v), default=0)
+
+
+def distribution(counter: Counter, low: Optional[int] = None,
+                 high: Optional[int] = None) -> List[Tuple[int, float]]:
+    """Every whole value from low to high (default: the smallest and largest
+    seen) with its share of the tally in percent; values never seen get
+    0.0, so a chart's bars are evenly spaced."""
+    total = sum(counter.values())
+    if not total:
+        return []
+    low = counter_min(counter) if low is None else low
+    high = counter_max(counter) if high is None else high
+    return [(value, 100.0 * counter.get(value, 0) / total) for value in range(low, high + 1)]
+
+
+_ATTRIBUTES = {"jokers": "jokers", "moves": "inclusive_calls", "threshold": "threshold"}
+
+
+def best_curves(results: Sequence["BatchResult"], x: str,
+                by: str = "jokers") -> Dict[object, List["BatchResult"]]:
+    """For each value of `by`, the best result at each value of `x`
+    ("jokers", "moves" or "threshold"), sorted by x. The best is the highest
+    win rate; ties keep the order given (the sweep's own order)."""
+    x_attr, by_attr = _ATTRIBUTES[x], _ATTRIBUTES[by]
+    best: Dict[object, Dict[object, BatchResult]] = {}
+    for r in results:
+        line = best.setdefault(getattr(r, by_attr), {})
+        point = getattr(r, x_attr)
+        if point not in line or r.win_rate > line[point].win_rate:
+            line[point] = r
+    return {group: [line[point] for point in sorted(line)]
+            for group, line in sorted(best.items())}
 
 
 def wilson_interval(wins: int, games: int, z: float = Z95) -> Tuple[float, float]:

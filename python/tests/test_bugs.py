@@ -4,9 +4,13 @@ V1 BUG REGRESSION TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_bugs.py
 Status: ACTIVE
-Version: 1.2
+Version: 1.3
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 254 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.3 CHANGES (2026-10-20):
+- Ctrl+L turns on the counts switch (cards left is part of the counts),
+  and leaves the odds alone.
 
 VERSION 1.2 CHANGES (2026-10-20):
 - Game over and cards left are checked on the page (banner, side panel):
@@ -34,9 +38,9 @@ DEPENDENCIES:
 CLI USAGE:
 ---------
 # From the python/ folder
-pytest
+python -m pytest tests/test_bugs.py
 # Headless Linux, to include the GUI tests
-xvfb-run pytest
+xvfb-run python3 -m pytest
 """
 
 import pytest
@@ -267,6 +271,7 @@ def test_bug_remaining_cards_shortcut_works(tk_root, no_dialogs):
     gui.root.focus_force()
     pump(tk_root)
     gui.root.event_generate("<Control-l>", when="now")
-    assert gui.odds_var.get() and gui.side_view.get() == "cards"
+    assert gui.counts_var.get() and gui.side_view.get() == "cards"   # Ctrl+L turns counts on
+    assert not gui.odds_var.get()
     assert gui.cards_frame.winfo_manager() == "pack"          # shown beside the board
     assert "Total" in gui.cards_text.get("1.0", "end") and " 43" in gui.cards_text.get("1.0", "end")

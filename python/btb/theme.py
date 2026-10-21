@@ -4,9 +4,18 @@ THEMES AND STYLING
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/theme.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 254 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.2 CHANGES (2026-10-20):
+- doc_palette(theme): the colours of a formatted help page (headings and
+  bullets in the accent, keycaps, card chips, table header and stripes).
+- chart_palette(theme): series colours for charts with several lines,
+  each readable on the panel and clearly different from the others
+  (color_distance), at least three in every theme.
+- subscribe() drops listeners whose widget has been closed, so the list
+  never keeps old windows (and their Tk objects) alive.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - Each theme has an "up" and a "down" colour: the two Higher buttons share
@@ -55,7 +64,9 @@ KEY FUNCTIONS:
   forgets closed ones
 - alive(widget) -> True while a widget still exists
 - contrast(a, b) -> WCAG contrast ratio of two colours (used by tests)
-- mix(a, b, share), hover_shade(bg, text) -> colour helpers
+- mix(a, b, share), hover_shade(bg, text), color_distance(a, b) -> colour
+  helpers
+- doc_palette(theme), chart_palette(theme) -> help-page and chart colours
 
 NOTES:
 -----
@@ -421,7 +432,10 @@ def repaint(text_widgets: List[tk.Misc], windows: List[tk.Misc], t: Theme) -> No
 
 
 def subscribe(widget: tk.Misc, callback: Callable[[Theme], None]) -> None:
-    """Call callback(theme) whenever the theme changes, while widget exists."""
+    """Call callback(theme) whenever the theme changes, while widget exists.
+    Listeners whose widget has gone are dropped here too, so the list never
+    keeps closed windows (and their Tk objects) alive."""
+    _listeners[:] = [(w, c) for w, c in _listeners if alive(w)]
     _listeners.append((widget, callback))
 
 
@@ -462,6 +476,45 @@ def mix(a: str, b: str, share: float) -> str:
     parts = [round(int(a[i:i + 2], 16) * (1 - share) + int(b[i:i + 2], 16) * share)
              for i in (0, 2, 4)]
     return "#" + "".join(f"{p:02x}" for p in parts)
+
+
+def doc_palette(t: Theme) -> Dict[str, str]:
+    """Colours for a formatted help page (widgets.DocView) on the panel
+    colour: headings and bullets in the accent, keys on a light chip, cards
+    on a card-coloured chip, table header and stripes, notes and rules."""
+    return {
+        "bg": t.panel, "text": t.text, "muted": t.muted,
+        "title": t.text, "heading": t.accent, "marker": t.accent,
+        "code_bg": mix(t.panel, t.text, 0.16), "code_text": t.text,
+        "card_bg": t.card, "red": t.red, "black": t.black,
+        "head_bg": mix(t.panel, t.text, 0.12), "stripe_bg": mix(t.panel, t.text, 0.05),
+        "note_bg": mix(t.panel, t.accent, 0.16), "note_text": t.text,
+        "rule": t.edge, "select_bg": t.accent, "select_text": t.accent_text,
+    }
+
+
+def color_distance(a: str, b: str) -> float:
+    """How different two colours look (0 = the same), a weighted RGB
+    distance: unlike contrast(), it tells gold from light blue."""
+    a, b = a.lstrip("#"), b.lstrip("#")
+    ra, ga, ba = (int(a[i:i + 2], 16) for i in (0, 2, 4))
+    rb, gb, bb = (int(b[i:i + 2], 16) for i in (0, 2, 4))
+    mean_red = (ra + rb) / 2
+    return ((2 + mean_red / 256) * (ra - rb) ** 2 + 4 * (ga - gb) ** 2
+            + (2 + (255 - mean_red) / 256) * (ba - bb) ** 2) ** 0.5
+
+
+def chart_palette(t: Theme) -> List[str]:
+    """Series colours for charts with several lines (Optimizer): the chart
+    colour first, then other theme colours that read on the panel (3:1)
+    and look clearly different from every colour already picked."""
+    picked: List[str] = []
+    for color in (t.chart, t.down, t.select, t.recover, t.good, t.bad, t.joker_ink,
+                  t.back_line, t.text, t.muted):
+        if (contrast(color, t.panel) >= 3.0
+                and all(color_distance(color, other) >= 150 for other in picked)):
+            picked.append(color)
+    return picked
 
 
 def hover_shade(background: str, text: str) -> str:

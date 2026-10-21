@@ -4,9 +4,13 @@ EXPORT, RESOURCE SCAN AND SETTINGS TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_export_and_system.py
 Status: ACTIVE
-Version: 1.0
+Version: 1.1
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.1 CHANGES (2026-10-20):
+- Settings include show_counts (the counts switch, split from show_odds).
+  A file from before the split, with only show_odds, uses it for both.
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. CSV and JSON exports, the CPU/memory scan that sizes parallel runs,
@@ -30,7 +34,7 @@ KEY FUNCTIONS:
 CLI USAGE:
 ---------
 # From the python/ folder
-pytest tests/test_export_and_system.py
+python -m pytest tests/test_export_and_system.py
 """
 
 import csv
@@ -160,7 +164,17 @@ def test_settings_start_with_the_defaults(isolated_settings):
 def test_settings_are_remembered(isolated_settings):
     assert settings.update(theme="Midnight", show_odds=True, cpu_workers=3)
     assert settings.settings_path().parent == isolated_settings
-    assert settings.load() == {"theme": "Midnight", "show_odds": True, "cpu_workers": 3}
+    assert settings.load() == {"theme": "Midnight", "show_odds": True, "show_counts": False,
+                               "cpu_workers": 3}
+
+
+def test_an_old_settings_file_uses_show_odds_for_both_switches(isolated_settings):
+    # Before the split, one show_odds setting covered the odds and the counts.
+    isolated_settings.mkdir(parents=True, exist_ok=True)
+    settings.settings_path().write_text(json.dumps({"show_odds": True}), encoding="utf-8")
+    assert settings.load()["show_odds"] is True and settings.load()["show_counts"] is True
+    settings.update(show_counts=False)                 # once saved, each has its own
+    assert settings.load()["show_odds"] is True and settings.load()["show_counts"] is False
 
 
 def test_bad_settings_are_refused_and_bad_files_ignored(isolated_settings):

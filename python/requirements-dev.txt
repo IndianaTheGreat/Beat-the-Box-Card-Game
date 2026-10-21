@@ -3,15 +3,21 @@
 # ==============================================
 # File Location: Beat-the-Box-Card-Game/python/requirements-dev.txt
 # Status: ACTIVE
-# Version: 1.0
+# Version: 1.1
 # Last Updated: 2026-10-20
+# Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+#
+# VERSION 1.1 CHANGES (2026-10-20):
+# - Commands written as "python -m ...": the Microsoft Store Python has no
+#   "py" launcher and doesn't put pytest on PATH.
 #
 # VERSION 1.0 CHANGES (2026-10-20):
 # - New. Packages needed to run the test suite.
 #
 # DESCRIPTION:
 # -----------
-# Install with: pip install -r requirements-dev.txt
-# Then run `pytest` from the python/ folder.
+# From the python/ folder:
+#   python -m pip install -r requirements-dev.txt
+#   python -m pytest
 
 pytest>=7.0

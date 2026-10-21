@@ -4,9 +4,21 @@ SIMULATOR AND STRATEGY OPTIMIZER PAGES
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/gui_sim.py
 Status: ACTIVE
-Version: 1.2
+Version: 1.3
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 254 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.3 CHANGES (2026-10-20):
+- Advanced tabs are charts instead of plain text. Simulator: four tiles
+  and a bar chart for every distribution (boxes left in wins, cards left
+  in losses, plays per game, inclusive calls used, recoveries, jokers
+  drawn), each with its average. Optimizer: the result tiles, win rate
+  against the threshold and against inclusive calls (a line per joker
+  count, with 95% ranges), the best win rate per joker count, and a table
+  of the best configuration for each value. The charts go two to a row
+  when there is room and scroll when there are more than fit.
+- "Show as text" switches to the full report as text; "Copy text" copies
+  it, whichever view is showing.
 
 VERSION 1.2 CHANGES (2026-10-20):
 - Pages, not pop-ups: each tool builds inside the frame it is given (a
@@ -76,7 +88,9 @@ KEY FUNCTIONS:
 - SimulatorGUI(parent, app) -> one batch: tiles, chart, details, exports
 - OptimizerGUI(parent, app) -> parameter sweep: ranked table, confirm,
   exports, Use Best in Simulator
-- describe_batch / describe_sweep (+ _details) -> text for the Advanced tab
+- describe_batch / describe_sweep (+ _details) -> the Advanced report as text
+- build_advanced / show_advanced_charts / reset_advanced_charts -> the
+  Advanced charts (each page); layout_advanced, copy_advanced, arrange_charts
 
 ERROR HANDLING:
 --------------
@@ -112,14 +126,15 @@ from . import settings as app_settings
 from . import theme as themes
 from .engine import BOX_SIZE, MAX_JOKERS, max_inclusive_calls, new_seed
 from .sim import (
-    MAX_CONFIGS, BatchResult, SweepResult, counter_max, counter_mean,
-    counter_min, float_range, run_batch, run_sweep, sweep_games, sweep_grid,
+    MAX_CONFIGS, BatchResult, SweepResult, best_curves, counter_max, counter_mean,
+    counter_min, distribution, float_range, run_batch, run_sweep, sweep_games, sweep_grid,
 )
 from .strategy import DEFAULT_THRESHOLD
 from .system import cpu_count, resolve_workers
 from .theme import Theme, font
 from .widgets import (
-    BarChart, ScrollFrame, StatTile, flow_row, readable_on, scrolled_tree, wrap_to,
+    BarChart, LineChart, ScrollFrame, StatTile, flow_row, readable_on, scrolled_tree,
+    wrap_to,
 )
 
 POLL_MS = 50
@@ -363,9 +378,20 @@ class _RunnerWindow:
         self.notebook = ttk.Notebook(self.frame)
         self.notebook.grid(row=1, column=1, sticky="nsew")
         self.build_results(self.notebook)
+        # Advanced: charts (scrolling when long), or the full report as text
+        # to read or copy.
         self.advanced_tab = ttk.Frame(self.notebook, padding=8)
-        holder = ttk.Frame(self.advanced_tab)
-        holder.pack(fill="both", expand=True)
+        bar = ttk.Frame(self.advanced_tab)
+        bar.pack(fill="x", pady=(0, 6))
+        self.advanced_as_text = tk.BooleanVar(value=False)
+        ttk.Checkbutton(bar, text="Show as text", variable=self.advanced_as_text,
+                        command=self.layout_advanced).pack(side="left")
+        self.copy_note = ttk.Label(bar, text="", style="Muted.TLabel")
+        self.copy_note.pack(side="right", padx=(8, 0))
+        ttk.Button(bar, text="Copy text", command=self.copy_advanced).pack(side="right")
+        self.advanced_charts = ScrollFrame(self.advanced_tab)
+        self.build_advanced(self.advanced_charts.body)
+        self.advanced_text_frame = holder = ttk.Frame(self.advanced_tab)
         scroll = ttk.Scrollbar(holder)
         scroll.pack(side="right", fill="y")
         self.advanced_text = tk.Text(holder, wrap="word", font=font("mono", 10), padx=12,
@@ -376,6 +402,7 @@ class _RunnerWindow:
         self._text_widgets.append(self.advanced_text)
         self.notebook.add(self.advanced_tab, text="Advanced")
         self.set_advanced("Run something first: the full statistics appear here.")
+        self.layout_advanced()
 
         left.update_idletasks()
         self.left_scroll.set_width(left.winfo_reqwidth())
@@ -386,6 +413,9 @@ class _RunnerWindow:
     # ----- subclass hooks ------------------------------------------------- #
     def build_inputs(self, form: ttk.Frame): ...
     def build_results(self, notebook: ttk.Notebook): ...
+    def build_advanced(self, body: ttk.Frame): ...
+    def show_advanced_charts(self): ...
+    def reset_advanced_charts(self): ...
     def build_actions(self, frame: ttk.Frame): ...
     def make_work(self) -> Optional[Callable]: ...
     def show_results(self, result): ...
@@ -445,6 +475,47 @@ class _RunnerWindow:
         self.advanced_text.insert("1.0", body)
         self.advanced_text.config(state="disabled")
 
+    def layout_advanced(self):
+        """Charts, or (Show as text) the full report as text."""
+        if self.advanced_as_text.get():
+            self.advanced_charts.pack_forget()
+            self.advanced_text_frame.pack(fill="both", expand=True)
+        else:
+            self.advanced_text_frame.pack_forget()
+            self.advanced_charts.pack(fill="both", expand=True)
+            self.advanced_charts.update_layout()
+
+    def copy_advanced(self):
+        """Copy the full Advanced report as text (whichever view is showing)."""
+        body = self.advanced_text.get("1.0", "end-1c")
+        self.root.clipboard_clear()
+        self.root.clipboard_append(body)
+        self.copy_note.configure(text="Copied")
+
+    def arrange_charts(self, frame: ttk.Frame, charts: List[tk.Misc], wide: int = 720,
+                       columns_wide: int = 2, columns_narrow: int = 1, gap: int = 10):
+        """Charts (or tiles) columns_wide to a row when the frame is at least
+        `wide` pixels wide, else columns_narrow."""
+        state = {"columns": 0}
+
+        def arrange(_event=None):
+            width = frame.winfo_width()
+            columns = columns_wide if width >= wide or width <= 1 else columns_narrow
+            if columns == state["columns"]:
+                return
+            state["columns"] = columns
+            for col in range(columns_wide):
+                frame.columnconfigure(col, weight=0, uniform="")
+            for i, chart in enumerate(charts):
+                row, col = divmod(i, columns)
+                chart.grid(row=row, column=col, sticky="ew",
+                           padx=(0 if col == 0 else gap, 0), pady=(0, gap))
+            for col in range(columns):
+                frame.columnconfigure(col, weight=1, uniform="charts")
+            self.advanced_charts.update_layout()
+        frame.bind("<Configure>", arrange, add="+")
+        arrange()
+
     def show_advanced_stats(self):
         """Open the Advanced tab (it fills in after every run)."""
         if self.advanced_report() is None:
@@ -492,6 +563,8 @@ class _RunnerWindow:
         self.progress_label.config(text="Ready")
         self.clear_message()
         self.reset_results()
+        self.reset_advanced_charts()
+        self.copy_note.configure(text="")
         self.set_advanced("Run something first: the full statistics appear here.")
 
     def on_progress(self, done: int, total: int):
@@ -523,6 +596,8 @@ class _RunnerWindow:
         report = self.advanced_report()
         if report:
             self.set_advanced(report)
+            self.show_advanced_charts()
+        self.advanced_charts.update_layout()
 
     def games_played(self, result) -> int:
         return getattr(result, "games", 0)
@@ -785,6 +860,64 @@ class SimulatorGUI(_RunnerWindow):
     def on_theme(self, theme):
         super().on_theme(theme)
         self.chart.set_theme(theme)
+        for chart in self.adv_charts:
+            chart.set_theme(theme)
+
+    # (counter, chart title, what the % is of, first value or None, last value or None)
+    ADVANCED_CHARTS = (
+        ("boxes_left_in_wins", "Boxes left in winning games", "wins", 1, BOX_SIZE),
+        ("cards_left_in_losses", "Cards left in the pile in lost games", "losses", 0, None),
+        ("plays", "Plays per game", "games", None, None),
+        ("inclusive_used", "Inclusive calls used per game", "games", 0, "calls"),
+        ("recoveries", "Recoveries per game", "games", 0, None),
+        ("jokers_drawn", "Jokers drawn per game", "games", 0, "jokers"),
+    )
+
+    def build_advanced(self, body):
+        self.adv_vars = [tk.StringVar(value="-") for _ in range(4)]
+        tiles = ttk.Frame(body)
+        tiles.pack(fill="x", pady=(0, 4))
+        self.arrange_charts(tiles, [StatTile(tiles, caption, var) for caption, var in zip(
+            ("Win rate (± 95% range)", "Games played", "Wins / losses", "Seed"),
+            self.adv_vars)], wide=600, columns_wide=4, columns_narrow=2, gap=6)
+        grid = ttk.Frame(body)
+        grid.pack(fill="x")
+        self.adv_charts = []
+        for _attr, title, _of, _low, _high in self.ADVANCED_CHARTS:
+            chart = BarChart(grid, self.theme, width=360, height=210, title=title)
+            self.adv_charts.append(chart)
+        self.arrange_charts(grid, [chart.canvas for chart in self.adv_charts])
+
+    def reset_advanced_charts(self):
+        for var in self.adv_vars:
+            var.set("-")
+        for chart, (_attr, title, *_rest) in zip(self.adv_charts, self.ADVANCED_CHARTS):
+            chart.draw([], title=title)
+
+    def show_advanced_charts(self):
+        r = self.result
+        if r is None:
+            return
+        self.adv_vars[0].set(f"{r.win_rate:.1f}% ±{r.margin_points:.1f}")
+        self.adv_vars[1].set(f"{r.games:,}")
+        self.adv_vars[2].set(f"{r.wins:,} / {r.losses:,}")
+        self.adv_vars[3].set(str(self.seed))
+        limits = {"calls": r.inclusive_calls, "jokers": r.jokers}
+        for chart, (attr, title, of, low, high) in zip(self.adv_charts, self.ADVANCED_CHARTS):
+            counter = getattr(r, attr)
+            high = limits.get(high, high)
+            if high is not None:
+                high = max(high, counter_max(counter))
+            items = distribution(counter, low, high)
+            chart.empty_message = f"No {of} in this run"
+            if not items:
+                chart.draw([], title=title)
+                continue
+            mean = counter_mean(counter)
+            chart.draw([(str(value), share) for value, share in items],
+                       value_format=lambda v: f"{v:.0f}%" if v >= 1 else f"{v:.1f}%",
+                       average=(mean - items[0][0], f"avg {mean:.2f}"),
+                       title=f"{title} (% of {of})")
 
     def make_work(self):
         try:
@@ -963,6 +1096,98 @@ class OptimizerGUI(_RunnerWindow):
     def on_theme(self, theme):
         super().on_theme(theme)
         self._tag_colors()
+        for chart in self.adv_charts:
+            chart.set_theme(theme)
+
+    BEST_COLUMNS = {
+        "setting": ("Setting", 110, "w"), "value": ("Value", 60, "center"),
+        "win": ("Best win %", 84, "e"), "margin": ("±", 46, "e"),
+        "jokers": ("Jokers", 58, "center"), "calls": ("Calls", 50, "center"),
+        "threshold": ("Threshold", 80, "center"),
+    }
+
+    def build_advanced(self, body):
+        tiles = ttk.Frame(body)
+        tiles.pack(fill="x", pady=(0, 10))
+        for i, (caption, var) in enumerate((("Best win rate (± 95%)", self.best_var),
+                                            ("Best settings", self.best_settings_var),
+                                            ("Configurations tested", self.configs_var),
+                                            ("Games played", self.total_var))):
+            row, col = divmod(i, 2)
+            StatTile(tiles, caption, var).grid(row=row, column=col, sticky="ew",
+                                               padx=(0 if col == 0 else 6, 0),
+                                               pady=(0 if row == 0 else 6, 0))
+            tiles.columnconfigure(col, weight=1, uniform="tiles")
+        grid = ttk.Frame(body)
+        grid.pack(fill="x")
+        self.threshold_chart = LineChart(grid, self.theme, width=360, height=240,
+                                         title="Win rate by threshold")
+        self.calls_chart = LineChart(grid, self.theme, width=360, height=240,
+                                     title="Win rate by inclusive calls")
+        self.jokers_chart = BarChart(grid, self.theme, width=360, height=240,
+                                     title="Best win rate by joker count")
+        self.adv_charts = [self.threshold_chart, self.calls_chart, self.jokers_chart]
+        for chart in self.adv_charts:
+            chart.empty_message = "Run an optimization to see this"
+        self.jokers_chart.axis_format = lambda v: f"{v:g}%"
+        note = ttk.Label(body, text="Each point is the best configuration for that value "
+                         "(over the settings not on the chart), with its 95% range. Lines "
+                         "that overlap can't be told apart.", style="Muted.TLabel")
+        note.pack(anchor="w", fill="x", pady=(0, 8))
+        wrap_to(note)
+        self.arrange_charts(grid, [chart.canvas for chart in self.adv_charts])
+        ttk.Label(body, text="Best configuration for each value",
+                  style="Heading.TLabel").pack(anchor="w", pady=(6, 4))
+        holder, self.best_table = scrolled_tree(body, self.BEST_COLUMNS, height=4)
+        holder.pack(fill="x")
+
+    def reset_advanced_charts(self):
+        self.threshold_chart.draw_series([], {})
+        self.calls_chart.draw_series([], {})
+        self.jokers_chart.draw([])
+        self.best_table.delete(*self.best_table.get_children())
+        self.best_table.configure(height=4)
+
+    def show_advanced_charts(self):
+        sweep = self.sweep
+        if not sweep or not sweep.results:
+            return
+        results = sweep.ranked()
+
+        def jokers_name(j):
+            return f"{j} joker" + ("" if j == 1 else "s")
+
+        for chart, x, fmt in ((self.threshold_chart, "threshold", lambda v: f"{v:g}"),
+                              (self.calls_chart, "moves", str)):
+            curves = best_curves(results, x)
+            xs = sorted({getattr(r, "threshold" if x == "threshold" else "inclusive_calls")
+                         for r in results})
+            series = {}
+            for jokers, line in curves.items():
+                at = {(r.threshold if x == "threshold" else r.inclusive_calls): r for r in line}
+                series[jokers_name(jokers)] = [
+                    (at[v].win_rate, *at[v].margin) if v in at else None for v in xs]
+            subtitle = "best over inclusive calls" if x == "threshold" else "best over thresholds"
+            title = ("Win rate by threshold" if x == "threshold"
+                     else "Win rate by inclusive calls")
+            chart.axis_format = lambda v: f"{v:g}%"
+            chart.draw_series([fmt(v) for v in xs], series, title=f"{title} ({subtitle})")
+        best_jokers = sweep.best_by("jokers")
+        self.jokers_chart.draw(
+            [(jokers_name(j), r.win_rate) for j, r in best_jokers.items()],
+            value_format=lambda v: f"{v:.1f}%",
+            errors=[r.margin for r in best_jokers.values()],
+            title="Best win rate by joker count")
+        table = self.best_table
+        table.delete(*table.get_children())
+        for param, name in (("jokers", "Jokers"), ("moves", "Inclusive calls"),
+                            ("threshold", "Threshold")):
+            for value, r in sweep.best_by(param).items():
+                table.insert("", "end", values=(
+                    name, f"{value:g}" if isinstance(value, float) else value,
+                    f"{r.win_rate:.2f}", f"{r.margin_points:.2f}", r.jokers,
+                    r.inclusive_calls, f"{r.threshold:g}"))
+        table.configure(height=min(30, max(4, len(table.get_children()))))
 
     def reset_results(self):
         self.sweep = None

@@ -4,9 +4,15 @@ REMEMBERED SETTINGS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/settings.py
 Status: ACTIVE
-Version: 1.0
+Version: 1.1
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.1 CHANGES (2026-10-20):
+- New setting show_counts: whether game pages start with the card counts,
+  plays and cards left showing (show_odds now covers only the odds). A
+  settings file from before this change has only show_odds; its value is
+  used for both, so nothing you saw before disappears.
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. Remembers the theme, the "show odds on cards" choice and the CPU
@@ -30,7 +36,8 @@ DEPENDENCIES:
 
 KEY FUNCTIONS:
 -------------
-- DEFAULTS -> theme (None = the theme.py default), show_odds, cpu_workers
+- DEFAULTS -> theme (None = the theme.py default), show_odds,
+  show_counts, cpu_workers
 - settings_path() -> where the file lives
 - load() -> dict of every setting (defaults filled in)
 - save(values) -> True if written
@@ -62,7 +69,8 @@ FILE_NAME = "settings.json"
 
 DEFAULTS: Dict[str, Any] = {
     "theme": None,          # None = theme.DEFAULT_THEME
-    "show_odds": False,     # odds badges under the cards
+    "show_odds": False,     # odds under the cards and the odds table
+    "show_counts": False,   # card counts, plays and cards left
     "cpu_workers": "auto",  # "auto" or a number of processes
 }
 
@@ -88,7 +96,7 @@ def settings_path() -> Path:
 def _valid(key: str, value: Any) -> bool:
     if key == "theme":
         return value is None or isinstance(value, str)
-    if key == "show_odds":
+    if key in ("show_odds", "show_counts"):
         return isinstance(value, bool)
     if key == "cpu_workers":
         return value == "auto" or (isinstance(value, int) and not isinstance(value, bool)
@@ -106,6 +114,8 @@ def load() -> Dict[str, Any]:
         for key in DEFAULTS:
             if key in data and _valid(key, data[key]):
                 values[key] = data[key]
+        if "show_counts" not in data and _valid("show_odds", data.get("show_odds")):
+            values["show_counts"] = data["show_odds"]    # file from before the split
     return values
 
 

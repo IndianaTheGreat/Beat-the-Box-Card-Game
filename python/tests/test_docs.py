@@ -4,9 +4,19 @@ DOCUMENTATION CONSISTENCY TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_docs.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 254 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.2 CHANGES (2026-10-20):
+- RULES.md and STRATEGY.md now live in docs/; the paths follow them, and
+  nothing is left at the old place in the repo root.
+- New: every relative link in every Markdown file points at a file that
+  exists (before, only links with a #anchor were checked).
+- The in-app help is written in markup (btb/markup.py): its count table
+  and strategy headings are read with markup.table_rows / headings.
+- The in-app text names docs/RULES.md and docs/STRATEGY.md (never the old
+  root paths), and the README and guide list Ctrl+K.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - docs/CARD_COUNTING.md joins the checks: its count table must match the
@@ -23,10 +33,11 @@ VERSION 1.0 CHANGES (2026-10-20):
 
 DESCRIPTION:
 -----------
-  * The card-count tables in RULES.md, STRATEGY.md, docs/CARD_COUNTING.md
-    and the in-app strategy guide all match engine.COUNT_TABLES.
+  * The card-count tables in docs/RULES.md, docs/STRATEGY.md,
+    docs/CARD_COUNTING.md and the in-app strategy guide all match
+    engine.COUNT_TABLES.
   * Every strategy section in the app has a matching heading in
-    STRATEGY.md.
+    docs/STRATEGY.md.
   * Every keyboard shortcut appears in the README and in docs/GUIDE.md.
   * The README links to all three guides, and the tool guide covers all
     four tools.
@@ -35,6 +46,7 @@ DESCRIPTION:
 DEPENDENCIES:
 ------------
 - pytest (requirements-dev.txt)
+- btb.markup, btb.text, btb.engine
 - Standard library: re, pathlib, unicodedata, urllib.parse
 
 KEY FUNCTIONS:
@@ -46,7 +58,7 @@ KEY FUNCTIONS:
 CLI USAGE:
 ---------
 # From the python/ folder
-pytest tests/test_docs.py
+python -m pytest tests/test_docs.py
 """
 
 import re
@@ -56,12 +68,12 @@ from urllib.parse import quote, unquote
 
 import pytest
 
-from btb import text
+from btb import markup, text
 from btb.engine import COUNT_TABLES, JOKER_RANK, RANKS
 
 ROOT = Path(__file__).resolve().parents[2]
-RULES = (ROOT / "RULES.md").read_text(encoding="utf-8")
-STRATEGY = (ROOT / "STRATEGY.md").read_text(encoding="utf-8")
+RULES = (ROOT / "docs" / "RULES.md").read_text(encoding="utf-8")
+STRATEGY = (ROOT / "docs" / "STRATEGY.md").read_text(encoding="utf-8")
 GUIDE = (ROOT / "docs" / "GUIDE.md").read_text(encoding="utf-8")
 COUNTING = (ROOT / "docs" / "CARD_COUNTING.md").read_text(encoding="utf-8")
 README = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -78,7 +90,8 @@ def markdown_count_table(doc: str) -> list:
     return [[_number(c) for c in row.strip("|").split("|")[1:]] for row in rows]
 
 
-@pytest.mark.parametrize("name, doc", [("RULES.md", RULES), ("STRATEGY.md", STRATEGY),
+@pytest.mark.parametrize("name, doc", [("docs/RULES.md", RULES),
+                                       ("docs/STRATEGY.md", STRATEGY),
                                        ("docs/CARD_COUNTING.md", COUNTING)])
 def test_markdown_count_tables_match_the_engine(name, doc):
     assert markdown_count_table(doc) == EXPECTED, name
@@ -86,22 +99,29 @@ def test_markdown_count_tables_match_the_engine(name, doc):
 
 
 def test_in_app_count_table_matches_the_engine():
-    rows = {}
-    for line in text.STRATEGY_GUIDE.splitlines():
-        parts = line.split()
-        if parts and parts[0] in ("Basic", "Weighted", "Advanced") and len(parts) == 14:
-            rows[parts[0]] = [_number(p) for p in parts[1:]]
+    rows = {row[0]: [_number(cell) for cell in row[1:]]
+            for row in markup.table_rows(text.STRATEGY_GUIDE)
+            if row[0] in ("Basic", "Weighted", "Advanced")}
     assert [rows["Basic"], rows["Weighted"], rows["Advanced"]] == [e[:-1] for e in EXPECTED]
+    header = next(row for row in markup.table_rows(text.STRATEGY_GUIDE) if row[0] == "Rank")
+    assert header[1:] == ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
 
 
 def test_every_in_app_strategy_section_is_in_strategy_md():
     headings = [line.lower() for line in STRATEGY.splitlines() if line.startswith("## ")]
-    guide_headings = [line.strip() for line in text.STRATEGY_GUIDE.splitlines()
-                      if line.strip() and line.strip() == line.strip().upper()
-                      and re.search("[A-Z]", line)]
+    in_app = markup.headings(text.STRATEGY_GUIDE, level=2)
     for section in text.STRATEGY_SECTIONS:
         assert any(section.lower() in h for h in headings), section
-        assert section.upper() in guide_headings, section
+        assert section in in_app, section
+
+
+def test_in_app_text_points_at_the_docs_folder():
+    every_text = [text.RULES_SUMMARY, text.STRATEGY_GUIDE, text.tool_guide(),
+                  text.shortcut_help(), *text.TOOL_HELP.values()]
+    for body in every_text:
+        for name in re.findall(r"[\w/]*(?:RULES|STRATEGY)\.md", body):
+            assert name.startswith("docs/"), name
+    assert "docs/RULES.md" in text.RULES_SUMMARY and "docs/STRATEGY.md" in text.STRATEGY_GUIDE
 
 
 def test_every_shortcut_is_documented():
@@ -112,8 +132,8 @@ def test_every_shortcut_is_documented():
 
 
 def test_readme_links_both_guides_and_the_guide_covers_every_tool():
-    assert "STRATEGY.md" in README and "docs/GUIDE.md" in README
-    assert "docs/CARD_COUNTING.md" in README
+    assert "(docs/RULES.md)" in README and "(docs/STRATEGY.md)" in README
+    assert "(docs/GUIDE.md)" in README and "(docs/CARD_COUNTING.md)" in README
     for tool in ("Game Player", "Game Assistant", "Simulator", "Strategy Optimizer"):
         assert re.search(rf"^## .*{tool}", GUIDE, re.M), tool
 
@@ -151,13 +171,38 @@ def anchors(doc: str) -> set:
     return found
 
 
-DOCS = {"STRATEGY.md": ROOT / "STRATEGY.md", "docs/GUIDE.md": ROOT / "docs" / "GUIDE.md",
+DOCS = {"docs/STRATEGY.md": ROOT / "docs" / "STRATEGY.md",
+        "docs/GUIDE.md": ROOT / "docs" / "GUIDE.md",
         "docs/CARD_COUNTING.md": ROOT / "docs" / "CARD_COUNTING.md",
-        "README.md": ROOT / "README.md", "RULES.md": ROOT / "RULES.md"}
+        "README.md": ROOT / "README.md", "docs/RULES.md": ROOT / "docs" / "RULES.md"}
 
 
-@pytest.mark.parametrize("name", ["STRATEGY.md", "docs/GUIDE.md", "docs/CARD_COUNTING.md",
-                                  "README.md"])
+def test_rules_and_strategy_moved_into_docs():
+    assert not (ROOT / "RULES.md").exists() and not (ROOT / "STRATEGY.md").exists()
+    assert (ROOT / "docs" / "RULES.md").exists() and (ROOT / "docs" / "STRATEGY.md").exists()
+
+
+@pytest.mark.parametrize("name", sorted(DOCS))
+def test_every_relative_link_points_at_a_file(name):
+    path = DOCS[name]
+    doc = path.read_text(encoding="utf-8")
+    for target in re.findall(r"\]\(([^)#\s]+)(?:#[^)\s]*)?\)", doc):
+        if re.match(r"[a-z]+:", target):              # http:, https:, mailto:
+            continue
+        assert (path.parent / unquote(target)).resolve().exists(), f"{name}: {target}"
+
+
+# docs/RULES.md links to #-inclusive-calls and #-recovering-a-failed-box, but
+# GitHub's anchors for those headings keep the emoji's variation selector
+# (%EF%B8%8F-...), so the two links don't jump. RULES.md is only changed with
+# the owner's OK, so this stays a known failure until then (strict: the
+# test says so the moment it is fixed).
+RULES_ANCHORS = pytest.mark.xfail(strict=True, reason="two contents links in docs/RULES.md "
+                                  "need the emoji's variation selector (owner's call)")
+
+
+@pytest.mark.parametrize("name", [pytest.param(n, marks=RULES_ANCHORS)
+                                  if n == "docs/RULES.md" else n for n in sorted(DOCS)])
 def test_every_anchor_link_points_at_a_real_heading(name):
     path = DOCS[name]
     doc = path.read_text(encoding="utf-8")

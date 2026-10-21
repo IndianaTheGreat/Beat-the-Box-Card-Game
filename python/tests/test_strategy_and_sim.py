@@ -4,9 +4,13 @@ STRATEGY AND SIMULATION TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_strategy_and_sim.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.2 CHANGES (2026-10-20):
+- Run command is now "python -m pytest" (works with the Microsoft Store
+  Python). No test changed.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - New tests for the joker fix (play a box joker once no inclusive calls
@@ -30,9 +34,9 @@ DEPENDENCIES:
 CLI USAGE:
 ---------
 # From the python/ folder
-pytest
+python -m pytest tests/test_strategy_and_sim.py
 # Headless Linux, to include the GUI tests
-xvfb-run pytest
+xvfb-run python3 -m pytest
 """
 
 import pytest

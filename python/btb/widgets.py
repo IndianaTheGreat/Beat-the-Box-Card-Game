@@ -4,9 +4,30 @@ CARD AND CHART WIDGETS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/widgets.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 254 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.2 CHANGES (2026-10-20):
+- New DocView: a help page drawn as a formatted document from the markup
+  in btb/markup.py: headings in real sizes, bullet and numbered lists
+  with hanging indents, tables as aligned columns (numbers centred), keys
+  on keycaps and cards on card-coloured chips, notes and dividing lines.
+  It wraps to the width, scrolls, can be selected and copied (Ctrl+C,
+  Ctrl+A, right-click), and redraws on a theme change keeping its place.
+- BarChart: a y-axis with gridlines, x labels thinned so they never
+  overlap (for 50 bars as easily as 9), values over the bars only when
+  they fit, a dashed average line, and optional 95% whiskers.
+- New LineChart (built on BarChart): one line per series with a marker
+  shape and colour each, 95% whiskers and a legend; the y-axis covers the
+  data rather than starting at 0, so small differences show.
+- New nice_ticks(low, high): round values for an axis.
+- The mouse wheel over a list or table that has nothing to scroll now
+  scrolls the panel around it.
+- DocView tables fit the page's width (narrower gaps, then a smaller
+  font) and re-fit when the window is resized; chips are measured as
+  drawn; the wheel scrolls the page over a chip; the copy menu is on the
+  right button (Button-2 only on a Mac).
 
 VERSION 1.1 CHANGES (2026-10-20):
 - Resizable: CardView fills whatever space the window gives it, keeping a
@@ -41,7 +62,9 @@ They contain no rules.
             key and, when switched on, its odds.
   StatTile  a big number with a caption ("43" / "Draw pile"); the number
             shrinks to fit a narrow tile.
-  BarChart  simple labelled bars (Simulator: boxes left in wins).
+  BarChart  labelled bars on an axis, with an average line and whiskers.
+  LineChart a line per series, with whiskers and a legend (Optimizer).
+  DocView   a help page drawn as a formatted document (btb.markup).
   CardGrid  4 x 13 mini cards plus jokers, for picking cards (Assistant);
             the cards shrink to fit the width they are given.
   ScrollFrame    a panel that scrolls up and down when it doesn't fit.
@@ -49,8 +72,8 @@ They contain no rules.
 
 DEPENDENCIES:
 ------------
-- btb.engine (Card, SUITS, RANKS), btb.theme
-- Standard library: tkinter, typing
+- btb.engine (Card, SUITS, RANKS), btb.theme, btb.markup
+- Standard library: tkinter, math, typing
 
 KEY FUNCTIONS:
 -------------
@@ -60,7 +83,10 @@ KEY FUNCTIONS:
 - CardView.fit(width, height) -> size the card to a canvas (called on resize)
 - text_width(widget, font, text) -> pixels a piece of text needs
 - StatTile(parent, caption, variable)
-- BarChart.draw(items, value_format)
+- BarChart.draw(items, value_format, average, errors, title)
+- LineChart.draw_series(labels, series, title)
+- nice_ticks(low, high, count) -> round axis values
+- DocView(parent, source).set_source / plain / copy / render
 - CardGrid(parent, theme, on_pick, jokers).set_available / set_selected /
   fit(width) / beside_jokers(widget)
 - ScrollFrame(parent, width).body / set_width(width) / update_layout()
@@ -87,10 +113,12 @@ NOTES:
 
 from __future__ import annotations
 
+import math
 import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from . import markup
 from . import theme as themes
 from .engine import RANKS, SUITS, Card
 from .theme import Theme, font
@@ -416,8 +444,34 @@ class StatTile(ttk.Frame):
 
 # --------------------------------------------------------------- BarChart -- #
 
+def nice_ticks(low: float, high: float, count: int = 4) -> List[float]:
+    """About `count` round tick values covering low..high (1, 2, 2.5 or 5
+    times a power of ten apart), for a chart's y-axis."""
+    if high <= low:
+        high = low + 1
+    raw = (high - low) / max(1, count)
+    power = 10 ** math.floor(math.log10(raw))
+    step = next(m * power for m in (1, 2, 2.5, 5, 10) if m * power >= raw)
+    first = math.floor(low / step) * step
+    ticks, value = [], first
+    while value < high + step * 0.999:
+        ticks.append(round(value, 10))
+        value += step
+    return ticks
+
+
 class BarChart:
-    """Labelled vertical bars. Redraws itself when the theme changes."""
+    """Labelled vertical bars on a y-axis with gridlines. Redraws itself
+    when resized or when the theme changes.
+
+    draw(items, value_format, average, errors): items are (label, value)
+    pairs. With many bars, only every few labels are written, so they
+    never overlap, and values are written over the bars only when there
+    is room. `average` (a position in bar units, 0 = the first bar) adds
+    a dashed line with its label; `errors` adds a 95% whisker
+    (low, high) to each bar."""
+
+    PAD = 12
 
     def __init__(self, parent: tk.Misc, theme: Theme, width: int = 380, height: int = 170,
                  title: str = ""):
@@ -425,6 +479,10 @@ class BarChart:
         self.width, self.height, self.title = width, height, title
         self.items: List[Tuple[str, float]] = []
         self.value_format: Callable[[float], str] = lambda v: f"{v:.0f}%"
+        self.axis_format: Callable[[float], str] = lambda v: f"{v:g}%"
+        self.average: Optional[Tuple[float, str]] = None
+        self.errors: Optional[List[Tuple[float, float]]] = None
+        self.empty_message = "Run a simulation to see this"
         self.canvas = tk.Canvas(parent, width=width, height=height, highlightthickness=0,
                                 borderwidth=0, background=theme.panel)
         self.canvas.bind("<Configure>", self._resized)
@@ -442,40 +500,532 @@ class BarChart:
         self.canvas.pack(**options)
 
     def draw(self, items: Sequence[Tuple[str, float]],
-             value_format: Optional[Callable[[float], str]] = None) -> None:
+             value_format: Optional[Callable[[float], str]] = None,
+             average: Optional[Tuple[float, str]] = None,
+             errors: Optional[Sequence[Tuple[float, float]]] = None,
+             title: Optional[str] = None) -> None:
         self.items = list(items)
         if value_format:
             self.value_format = value_format
+        self.average = average
+        self.errors = list(errors) if errors else None
+        if title is not None:
+            self.title = title
         self.redraw()
 
     def set_theme(self, theme: Theme) -> None:
         self.theme = theme
         self.redraw()
 
-    def redraw(self) -> None:
+    # ----- shared drawing ------------------------------------------------- #
+
+    def _frame(self) -> bool:
+        """Clear, draw the title; False (after a message) when empty."""
         c, t = self.canvas, self.theme
         c.delete("all")
         c.configure(background=t.panel)
-        c.create_text(12, 12, text=self.title, anchor="nw", font=font("ui", 10, "bold"),
-                      fill=t.muted)
-        if not self.items:
-            c.create_text(self.width / 2, self.height / 2, text="Run a simulation to see this",
-                          font=font("ui", 9), fill=t.muted)
-            return
-        left, right, top, bottom = 14, self.width - 14, 40, self.height - 24
-        top_value = max(v for _, v in self.items) or 1
-        slot = (right - left) / len(self.items)
-        bar = max(4, slot * 0.62)
+        c.create_text(self.PAD, 10, text=self.title, anchor="nw",
+                      font=font("ui", 10, "bold"), fill=t.text, width=max(60, self.width - 24))
+        if not self._has_data():
+            c.create_text(self.width / 2, self.height / 2 + 8, text=self.empty_message,
+                          font=font("ui", 9), fill=t.muted, width=max(60, self.width - 24))
+            return False
+        return True
+
+    def _has_data(self) -> bool:
+        return bool(self.items)
+
+    def _plot_area(self, ticks: List[float]) -> Tuple[float, float, float, float]:
+        """left, top, right, bottom of the plotting area, leaving room for
+        the title, the y tick labels and the x labels."""
+        tick_font = font("ui", 8)
+        label_room = max(text_width(self.canvas, tick_font, self.axis_format(v)) for v in ticks)
+        title_lines = 1 + int(text_width(self.canvas, font("ui", 10, "bold"), self.title)
+                              > self.width - 24)
+        return (self.PAD + label_room + 8, 18 + 17 * title_lines, self.width - self.PAD,
+                self.height - 24)
+
+    def _axis(self, ticks: List[float], left: float, top: float, right: float,
+              bottom: float, low: float, high: float) -> Callable[[float], float]:
+        """Gridlines and y tick labels; returns value -> y pixel."""
+        c, t = self.canvas, self.theme
+        grid = themes.mix(t.panel, t.text, 0.16)
+        span = (high - low) or 1
+
+        def y_of(value: float) -> float:
+            return bottom - (bottom - top) * (value - low) / span
+
+        for value in ticks:
+            y = y_of(value)
+            c.create_line(left, y, right, y, fill=grid)
+            c.create_text(left - 6, y, text=self.axis_format(value), anchor="e",
+                          font=font("ui", 8), fill=t.muted)
         c.create_line(left, bottom, right, bottom, fill=t.edge)
-        for i, (label, value) in enumerate(self.items):
+        return y_of
+
+    def _x_labels(self, labels: List[str], xs: List[float], slot: float, bottom: float) -> None:
+        """Write every k-th label so neighbours never overlap (the last one
+        is always written)."""
+        label_font = font("ui", 8)
+        widest = max((text_width(self.canvas, label_font, label) for label in labels), default=0)
+        every = max(1, math.ceil((widest + 6) / max(1.0, slot)))
+        for i, (label, x) in enumerate(zip(labels, xs)):
+            if i % every == 0 or (i == len(labels) - 1 and (i % every) > every // 2):
+                self.canvas.create_text(x, bottom + 11, text=label, font=label_font,
+                                        fill=self.theme.muted)
+
+    def _whisker(self, x: float, y_low: float, y_high: float, color: str) -> None:
+        c = self.canvas
+        c.create_line(x, y_low, x, y_high, fill=color, width=1)
+        c.create_line(x - 3, y_low, x + 3, y_low, fill=color)
+        c.create_line(x - 3, y_high, x + 3, y_high, fill=color)
+
+    def redraw(self) -> None:
+        if not self._frame():
+            return
+        c, t = self.canvas, self.theme
+        values = [v for _, v in self.items]
+        tops = values + [high for _low, high in (self.errors or [])]
+        ticks = nice_ticks(0, max(tops) or 1)
+        left, top, right, bottom = self._plot_area(ticks)
+        y_of = self._axis(ticks, left, top, right, bottom, 0, ticks[-1])
+        slot = (right - left) / len(self.items)
+        bar = max(1.0, slot * 0.7)
+        value_font = font("ui", 8)
+        room = all(text_width(c, value_font, self.value_format(v)) <= slot + 2 for v in values)
+        xs = []
+        for i, (_label, value) in enumerate(self.items):
             cx = left + slot * (i + 0.5)
-            height = (bottom - top) * value / top_value
+            xs.append(cx)
             if value > 0:
-                c.create_rectangle(cx - bar / 2, bottom - height, cx + bar / 2, bottom,
+                c.create_rectangle(cx - bar / 2, y_of(value), cx + bar / 2, bottom,
                                    fill=t.chart, outline="")
-                c.create_text(cx, bottom - height - 8, text=self.value_format(value),
-                              font=font("ui", 8), fill=t.text)
-            c.create_text(cx, bottom + 11, text=label, font=font("ui", 9), fill=t.muted)
+            if self.errors:
+                low, high = self.errors[i]
+                self._whisker(cx, y_of(low), y_of(high), t.text)
+            if room and value > 0 and not self.errors:
+                c.create_text(cx, y_of(value) - 7, text=self.value_format(value),
+                              font=value_font, fill=t.text)
+        self._x_labels([label for label, _ in self.items], xs, slot, bottom)
+        if self.average is not None:
+            position, label = self.average
+            x = left + slot * (position + 0.5)
+            c.create_line(x, top - 4, x, bottom, fill=t.text, dash=(4, 3), width=2)
+            anchor = "e" if x > (left + right) / 2 else "w"
+            c.create_text(x + (-5 if anchor == "e" else 5), top + 2, text=label, anchor=anchor,
+                          font=font("ui", 8, "bold"), fill=t.text)
+
+
+class LineChart(BarChart):
+    """One line per series over shared x labels, each point with its 95%
+    whisker, and a legend. The y-axis covers the data (it need not start at
+    0, so small differences show).
+
+    draw_series(labels, series): labels are the x labels; series maps a
+    name to one (value, low, high) per label, or None where a series has
+    no point."""
+
+    SHAPES = ("circle", "square", "diamond", "triangle")   # one per series, as well as colour
+
+    def __init__(self, parent: tk.Misc, theme: Theme, width: int = 380, height: int = 200,
+                 title: str = ""):
+        self.labels: List[str] = []
+        self.series: Dict[str, List[Optional[Tuple[float, float, float]]]] = {}
+        super().__init__(parent, theme, width, height, title)
+
+    def draw_series(self, labels: Sequence[str],
+                    series: Dict[str, Sequence[Optional[Tuple[float, float, float]]]],
+                    title: Optional[str] = None) -> None:
+        self.labels = list(labels)
+        self.series = {name: list(points) for name, points in series.items()}
+        if title is not None:
+            self.title = title
+        self.redraw()
+
+    def _has_data(self) -> bool:
+        return any(p is not None for points in self.series.values() for p in points)
+
+    def _marker(self, shape: str, x: float, y: float, color: str, r: float = 4.0) -> None:
+        c, edge = self.canvas, self.theme.panel
+        if shape == "square":
+            c.create_rectangle(x - r + 0.5, y - r + 0.5, x + r - 0.5, y + r - 0.5, fill=color,
+                               outline=edge)
+        elif shape == "diamond":
+            c.create_polygon(x, y - r - 1, x + r + 1, y, x, y + r + 1, x - r - 1, y,
+                             fill=color, outline=edge)
+        elif shape == "triangle":
+            c.create_polygon(x, y - r - 1, x + r + 1, y + r, x - r - 1, y + r, fill=color,
+                             outline=edge)
+        else:
+            c.create_oval(x - r, y - r, x + r, y + r, fill=color, outline=edge)
+
+    def redraw(self) -> None:
+        if not self._frame():
+            return
+        c, t = self.canvas, self.theme
+        points = [p for line in self.series.values() for p in line if p is not None]
+        low = min(p[1] for p in points)
+        high = max(p[2] for p in points)
+        pad = max(0.5, (high - low) * 0.08)
+        ticks = nice_ticks(max(0.0, low - pad), min(100.0, high + pad))
+        legend_height = 16
+        left, top, right, bottom = self._plot_area(ticks)
+        top += legend_height
+        y_of = self._axis(ticks, left, top, right, bottom, ticks[0], ticks[-1])
+        slot = (right - left) / max(1, len(self.labels))
+        xs = [left + slot * (i + 0.5) for i in range(len(self.labels))]
+        colors = themes.chart_palette(t)
+        legend_x = left
+        for n, (name, line) in enumerate(self.series.items()):
+            color = colors[n % len(colors)]
+            shift = (n - (len(self.series) - 1) / 2) * min(4.0, slot / 8)   # keep whiskers apart
+            path = []
+            for x, point in zip(xs, line):
+                if point is None:
+                    if len(path) >= 4:
+                        c.create_line(*path, fill=color, width=2)
+                    path = []
+                    continue
+                value, p_low, p_high = point
+                px, py = x + shift, y_of(value)
+                self._whisker(px, y_of(p_low), y_of(p_high), color)
+                path += [px, py]
+            if len(path) >= 4:
+                c.create_line(*path, fill=color, width=2)
+            shape = self.SHAPES[n % len(self.SHAPES)]
+            for x, point in zip(xs, line):
+                if point is not None:
+                    self._marker(shape, x + shift, y_of(point[0]), color)
+            # legend: the marker and the name, left to right under the title
+            mid = top - legend_height + 4
+            c.create_line(legend_x, mid, legend_x + 16, mid, fill=color, width=2)
+            self._marker(shape, legend_x + 8, mid, color)
+            c.create_text(legend_x + 21, mid, text=name, anchor="w",
+                          font=font("ui", 8), fill=t.text)
+            legend_x += 34 + text_width(c, font("ui", 8), name)
+        self._x_labels(self.labels, xs, slot, bottom)
+
+
+# ---------------------------------------------------------------- DocView -- #
+
+class DocView(ttk.Frame):
+    """A help page drawn as a formatted document (btb.markup): headings in
+    real sizes, bullet and numbered lists with hanging indents, tables as
+    aligned columns, keys on a chip, cards in card colours, notes and
+    dividing lines. Text wraps to the width, scrolls, can be selected and
+    copied (Ctrl+C or the right-click menu), and repaints on a theme change."""
+
+    MARGIN = 30          # left and right page margin (pixels)
+    INDENT = 24          # extra indent per list level
+    CELL_GAP = 26        # space between table columns
+    BASE = 11            # body text size (points)
+
+    def __init__(self, parent: tk.Misc, source: str = "", style: str = "TFrame"):
+        super().__init__(parent, style=style)
+        self.source = source
+        self.chips: List[tk.Label] = []          # keys and cards drawn inline
+        self.text = tk.Text(self, wrap="word", padx=self.MARGIN, pady=20, borderwidth=0,
+                            highlightthickness=0, relief="flat", cursor="xterm",
+                            takefocus=1, exportselection=True)
+        self.scroll = ttk.Scrollbar(self, orient="vertical", command=self.text.yview)
+        self.text.configure(yscrollcommand=self.scroll.set)
+        self.text.grid(row=0, column=0, sticky="nsew")
+        self.scroll.grid(row=0, column=1, sticky="ns")
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
+        # A read-only page still takes the focus on a click, so Ctrl+C copies.
+        self.text.bind("<Button-1>", lambda e: self.text.focus_set(), add="+")
+        self.text.bind("<Control-a>", self._select_all)
+        self.text.bind("<Control-A>", self._select_all)
+        self.menu = tk.Menu(self, tearoff=False)
+        self.menu.add_command(label="Copy", command=self.copy)
+        self.menu.add_command(label="Select All", command=self._select_all)
+        for sequence in self._menu_buttons():
+            self.text.bind(sequence, self._popup)
+        self._fitted_width = 0
+        self._refit: Optional[str] = None
+        self.text.bind("<Configure>", self._resized, add="+")
+        self.render()
+        themes.subscribe(self, lambda _t: self.render())
+
+    # ----- public --------------------------------------------------------- #
+
+    def set_source(self, source: str) -> None:
+        self.source = source
+        self.render()
+
+    def plain(self) -> str:
+        """Everything on the page, as text (what Select All + Copy gives)."""
+        return self.text.get("1.0", "end-1c")
+
+    def copy(self) -> None:
+        """Copy the selection, or the whole page when nothing is selected."""
+        try:
+            chosen = self.text.get("sel.first", "sel.last")
+        except tk.TclError:
+            chosen = self.plain()
+        self.clipboard_clear()
+        self.clipboard_append(chosen)
+
+    def _select_all(self, _event=None) -> str:
+        self.text.tag_add("sel", "1.0", "end-1c")
+        return "break"
+
+    def _menu_buttons(self) -> Tuple[str, ...]:
+        """The right mouse button: Button-3, or Button-2 on a Mac (on
+        Windows and Linux Button-2 is the middle button)."""
+        try:
+            aqua = self.tk.call("tk", "windowingsystem") == "aqua"
+        except tk.TclError:
+            aqua = False
+        return ("<Button-2>", "<Control-Button-1>") if aqua else ("<Button-3>",)
+
+    def _wheel(self, event) -> str:
+        """Scroll the page (used for the chips, which would swallow the wheel)."""
+        if getattr(event, "num", None) == 4 or getattr(event, "delta", 0) > 0:
+            self.text.yview_scroll(-3, "units")
+        else:
+            self.text.yview_scroll(3, "units")
+        return "break"
+
+    def _popup(self, event) -> None:
+        try:
+            self.menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.menu.grab_release()
+
+    # ----- drawing -------------------------------------------------------- #
+
+    def render(self) -> None:
+        """Draw the page from the markup in the current theme, keeping the
+        scroll position."""
+        t = themes.current()
+        p = themes.doc_palette(t)
+        text = self.text
+        top = text.index("@0,0") if self.source == getattr(self, "_drawn", None) else "1.0"
+        text.configure(state="normal", background=p["bg"], foreground=p["text"],
+                       selectbackground=p["select_bg"], selectforeground=p["select_text"],
+                       inactiveselectbackground=p["select_bg"], insertbackground=p["text"],
+                       font=font("ui", self.BASE))
+        text.delete("1.0", "end")
+        for chip in self.chips:
+            chip.destroy()
+        self.chips = []
+        self._palette = p
+        for tag in text.tag_names():
+            if tag != "sel":
+                text.tag_delete(tag)
+        self._styles(p)
+        self._tables = 0
+        previous = None
+        for block in markup.parse(self.source):
+            if previous is not None:
+                self._space(previous, block)
+            getattr(self, f"_{block.kind}")(block)
+            previous = block
+        text.delete("end-2c", "end-1c")         # no empty line at the very end
+        text.tag_raise("sel")
+        text.configure(state="disabled")
+        text.yview(top)                         # same page: same line at the top
+        self._drawn = self.source
+
+    # Space between blocks is an empty line in a small font. (Tk takes a
+    # line's spacing from its first character, which may be a chip, so
+    # spacing options alone can't be relied on.) Copied text gets a blank
+    # line between paragraphs from it, too.
+    GAPS = {"small": 3, "medium": 6, "large": 9}
+
+    def _space(self, previous, block) -> None:
+        if block.kind == "item" and previous.kind == "item":
+            return                                  # a list stays together
+        if block.kind == "rule":
+            return                                  # the rule has its own space
+        if block.kind == "heading":
+            size = "large" if block.level <= 2 else "medium"
+        elif previous.kind == "heading":
+            size = "small"
+        else:
+            size = "medium"
+        self.text.insert("end", "\n", (f"gap_{size}",))
+
+    def _styles(self, p: Dict[str, str]) -> None:
+        text, base = self.text, self.BASE
+        marker_width = text_width(self, font("ui", base, "bold"), "88.") + 10
+        for name, size in self.GAPS.items():
+            text.tag_configure(f"gap_{name}", font=font("ui", size), spacing1=0, spacing3=0)
+        text.tag_configure("para", spacing2=3)
+        text.tag_configure("h1", font=font("ui", 20, "bold"), foreground=p["title"],
+                           spacing1=2, spacing3=4)
+        text.tag_configure("h2", font=font("ui", 15, "bold"), foreground=p["heading"],
+                           spacing1=4, spacing3=2)
+        text.tag_configure("h3", font=font("ui", 12, "bold"), foreground=p["text"],
+                           spacing1=2, spacing3=0)
+        for level in range(3):
+            left = level * self.INDENT
+            text.tag_configure(f"item{level}", lmargin1=left, lmargin2=left + marker_width,
+                               tabs=(left + marker_width,), spacing1=3, spacing2=3)
+        text.tag_configure("marker", foreground=p["marker"], font=font("ui", base, "bold"))
+        text.tag_configure("bold", font=font("ui", base, "bold"))
+        # Keys and cards are drawn as small labels (a chip); their text sits
+        # beside them, hidden, so Copy still includes it.
+        text.tag_configure("hidden", elide=True)
+        text.tag_configure("note", lmargin1=0, lmargin2=marker_width,
+                           tabs=(marker_width,), spacing1=2, spacing2=3,
+                           foreground=p["note_text"])
+        text.tag_configure("notebar", foreground=p["marker"], font=font("ui", base + 2, "bold"))
+        text.tag_configure("rule", font=font("ui", 1), background=p["rule"])
+        text.tag_configure("gap", font=font("ui", 6))
+        text.tag_configure("trow", spacing1=3, spacing3=3)
+        text.tag_configure("th", font=font("ui", base, "bold"), background=p["head_bg"])
+        text.tag_configure("stripe", background=p["stripe_bg"])
+
+    def _spans(self, spans, tags: Tuple[str, ...]) -> None:
+        for piece, style in spans:
+            if style in ("card", "code"):
+                self._chip(piece, style, tags)
+            else:
+                self.text.insert("end", piece, tags + (("bold",) if style == "bold" else ()))
+
+    CHIP_EXTRA = 2 * 3 + 2 * 1 + 2 * 1     # a chip's padx, border and window padding
+
+    def _chip_font(self, style: str) -> tuple:
+        return font("card", self.BASE - 1, "bold") if style == "card" else font("mono",
+                                                                                 self.BASE - 1)
+
+    def _chip(self, piece: str, style: str, tags: Tuple[str, ...]) -> None:
+        """A key (on a keycap) or a card (in card colours, on a card face)."""
+        p = self._palette
+        if style == "card":
+            red = any(suit in piece for suit in RED_SUITS)
+            options = dict(font=self._chip_font(style), background=p["card_bg"],
+                           foreground=p["red" if red else "black"])
+        else:
+            options = dict(font=self._chip_font(style), background=p["code_bg"],
+                           foreground=p["code_text"])
+        chip = tk.Label(self.text, text=piece, padx=3, pady=0, borderwidth=0,
+                        highlightthickness=1, highlightbackground=p["rule"], cursor="xterm",
+                        **options)
+        for sequence in self._menu_buttons():
+            chip.bind(sequence, self._popup)
+        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            chip.bind(sequence, self._wheel)                 # the page scrolls over a chip
+        chip.bind("<Button-1>", lambda e: self.text.focus_set())
+        self.chips.append(chip)
+        self.text.window_create("end", window=chip, align="center", padx=1)
+        self.text.insert("end", piece, tags + ("hidden",))
+
+    def _heading(self, block) -> None:
+        tag = f"h{block.level}"
+        self._spans(block.spans, (tag,))
+        self.text.insert("end", "\n", (tag,))
+
+    def _para(self, block) -> None:
+        self._spans(block.spans, ("para",))
+        self.text.insert("end", "\n", ("para",))
+
+    def _item(self, block) -> None:
+        tags: Tuple[str, ...] = (f"item{block.level}",)
+        self.text.insert("end", f"{block.marker}\t", tags + ("marker",))
+        self._spans(block.spans, tags)
+        self.text.insert("end", "\n", tags)
+
+    def _note(self, block) -> None:
+        """A note: a bar in the accent colour, the text indented beside it."""
+        self.text.insert("end", "▍\t", ("note", "notebar"))
+        self._spans(block.spans, ("note",))
+        self.text.insert("end", "\n", ("note",))
+
+    def _rule(self, _block) -> None:
+        self.text.insert("end", "\n", ("gap",))
+        self.text.insert("end", "\n", ("rule",))
+        self.text.insert("end", "\n", ("gap",))
+
+    def _table(self, block) -> None:
+        """Rows as tab-separated lines with tab stops at each column; a
+        column of numbers is centred, others start at their stop. A long
+        last cell wraps under itself."""
+        self._tables += 1
+        name = f"table{self._tables}"
+        rows = block.header + block.rows
+        columns = max(len(row) for row in rows)
+        numeric = [all(_is_number("".join(p for p, _s in row[c])) for row in block.rows
+                       if c < len(row) and row[c]) for c in range(columns)]
+        # Fit the page's width: first narrow the gaps, then a smaller font.
+        room = self._text_room()
+        for size in (self.BASE, self.BASE - 1, self.BASE - 2):
+            widths = self._column_widths(block, columns, size)
+            gap = self.CELL_GAP
+            if room and sum(widths) + 10 + gap * (columns - 1) > room:
+                gap = max(8, (room - sum(widths) - 10) // max(1, columns - 1))
+            if not room or sum(widths) + 10 + gap * (columns - 1) <= room:
+                break
+        stops, x = [], 10
+        for c in range(columns):
+            if numeric[c]:
+                stops += [x + widths[c] / 2, "center"]
+            else:
+                stops += [x, "left"]
+            x += widths[c] + gap
+        last_start = stops[-2] if not numeric[-1] else 10
+        self.text.tag_configure(name, tabs=tuple(stops), lmargin1=0, lmargin2=last_start)
+        header_tags: Tuple[str, ...] = ("th",)
+        if size != self.BASE:               # made after "th", so these fonts win
+            self.text.tag_configure(name, font=font("ui", size))
+            self.text.tag_configure(f"{name}h", font=font("ui", size, "bold"))
+            header_tags += (f"{name}h",)
+        for r, row in enumerate(rows):
+            tags: Tuple[str, ...] = (name, "trow")
+            if r < len(block.header):
+                tags += header_tags
+            elif (r - len(block.header)) % 2 == 1:
+                tags += ("stripe",)
+            for c in range(columns):
+                self.text.insert("end", "\t", tags)
+                if c < len(row):
+                    self._spans(row[c], tags)
+            self.text.insert("end", "\n", tags)
+
+
+    def _column_widths(self, block, columns: int, size: int) -> List[int]:
+        """Pixels each column needs at text size `size`. Keys and cards are
+        measured as the chips they are drawn as (their own font, padding
+        and border), so a chip never pushes past its column's tab stop."""
+        widths = [0] * columns
+        for r, row in enumerate(block.header + block.rows):
+            weight = "bold" if r < len(block.header) else "normal"
+            for c, cell in enumerate(row):
+                width = 0
+                for piece, style in cell:
+                    if style in ("code", "card"):
+                        width += text_width(self, self._chip_font(style), piece) + self.CHIP_EXTRA
+                    else:
+                        width += text_width(self, font("ui", size, "bold" if style == "bold"
+                                                       else weight), piece)
+                widths[c] = max(widths[c], width + 4)
+        return widths
+
+    def _text_room(self) -> int:
+        """Width the text can use (0 while the page isn't laid out yet)."""
+        width = self.text.winfo_width()
+        return max(0, width - 2 * self.MARGIN - 6) if width > 1 else 0
+
+    def _resized(self, event) -> None:
+        """Re-fit the tables when the width changes enough to matter."""
+        if "|" not in self.source or abs(event.width - self._fitted_width) < 30:
+            return
+        self._fitted_width = event.width
+        if self._refit is not None:
+            self.after_cancel(self._refit)
+        self._refit = self.after(80, self._do_refit)
+
+    def _do_refit(self) -> None:
+        self._refit = None
+        if themes.alive(self.text):
+            self.render()
+
+
+def _is_number(words: str) -> bool:
+    return bool(words) and all(ch in "0123456789+-−.%, " for ch in words)
 
 
 # --------------------------------------------------------------- CardGrid -- #
@@ -606,8 +1156,8 @@ def _wheel(event) -> Optional[str]:
     if isinstance(widget, str) or event.state & 0x0001:     # Shift+wheel: not ours
         return None
     try:
-        if widget.winfo_class() in _SELF_SCROLLING:
-            return None
+        if widget.winfo_class() in _SELF_SCROLLING and _can_scroll(widget):
+            return None                      # the list scrolls itself
         path = str(widget)
     except tk.TclError:
         return None
@@ -623,6 +1173,15 @@ def _wheel(event) -> Optional[str]:
                 frame.canvas.yview_scroll(3, "units")
             return "break"
     return None
+
+
+def _can_scroll(widget: tk.Misc) -> bool:
+    """True if a list, table or text has more lines than it shows."""
+    try:
+        first, last = (float(v) for v in widget.yview())
+    except (tk.TclError, AttributeError, ValueError, TypeError):
+        return True
+    return first > 0.0 or last < 1.0
 
 
 class ScrollFrame(ttk.Frame):

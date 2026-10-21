@@ -7,7 +7,7 @@
 </div>
 
 > [!NOTE]
-> The counts themselves are defined in [RULES.md](../RULES.md#-card-counting). This page explains them and reviews them with simulated games. Playing advice in general is in [STRATEGY.md](../STRATEGY.md).
+> The counts themselves are defined in [RULES.md](RULES.md#-card-counting). This page explains them and reviews them with simulated games. Playing advice in general is in [STRATEGY.md](STRATEGY.md).
 
 ---
 
@@ -49,7 +49,7 @@ Every card is counted **once**, when it first becomes visible: in the opening de
 | **Negative** | More low cards have been seen, so more **high** cards are left. | ⬆️ Higher |
 | **Zero** | Balanced. | Go by the card itself. |
 
-The game shows all three counts (Ctrl+O, **Show odds & counts**), each with ▼ or ▲ for the call it favours, and says when they disagree.
+The game shows all three counts (Ctrl+K, **Show counts**), each with ▼ or ▲ for the call it favours, and says when they disagree. The odds have their own switch (Ctrl+O, **Show odds**), so you can practise with the counts on and the odds hidden.
 
 ---
 
@@ -158,7 +158,7 @@ With no inclusive calls, tracking ranks adds nothing measurable (11.7% against 1
 
 ### Ideas for the app (not built yet)
 
-- **A "ties left" figure under each card** (how many of that rank remain) as part of Show odds & counts. It is exactly the information that closes the gap above.
+- **A "ties left" figure under each card** (how many of that rank remain) as part of Show counts. It is exactly the information that closes the gap above.
 - **A "play by the count" option in the Simulator**, so you can test counting habits yourself with any settings.
 
 ---

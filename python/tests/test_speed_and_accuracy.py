@@ -4,9 +4,13 @@ SIMULATOR SPEED AND ACCURACY TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_speed_and_accuracy.py
 Status: ACTIVE
-Version: 1.0
+Version: 1.1
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.1 CHANGES (2026-10-20):
+- Run command is now "python -m pytest" (works with the Microsoft Store
+  Python). No test changed.
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. Proves the faster simulator gives the same answers: the lean
@@ -34,7 +38,7 @@ KEY FUNCTIONS:
 CLI USAGE:
 ---------
 # From the python/ folder
-pytest tests/test_speed_and_accuracy.py
+python -m pytest tests/test_speed_and_accuracy.py
 """
 
 import random

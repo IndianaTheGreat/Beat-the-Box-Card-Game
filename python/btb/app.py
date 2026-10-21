@@ -4,9 +4,16 @@ ONE-WINDOW APP: SIDEBAR AND PAGES
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/app.py
 Status: ACTIVE
-Version: 1.0
+Version: 1.1
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 254 passed)
+Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+
+VERSION 1.1 CHANGES (2026-10-20):
+- Help pages (How to Play, Strategy, Tool Guide, Shortcuts) look like a
+  formatted document (widgets.DocView) in the app's UI font: headings,
+  lists, tables, keys and card colours, instead of plain monospaced text.
+- Settings has two defaults, "Show odds by default" and "Show counts by
+  default", for the two switches on the game pages (Ctrl+O and Ctrl+K).
 
 VERSION 1.0 CHANGES (2026-10-20):
 - New. The whole suite in one window: a sidebar on the left switches
@@ -42,7 +49,8 @@ KEY FUNCTIONS:
   calling its on_show() if it has one), returns it
 - App.page(key) -> the page object if it has been built, else None
 - App.launch(cls), App.open_settings() -> shortcuts to show_page
-- HomePage, TextPage, SettingsPage -> the non-tool pages
+- HomePage, TextPage (a DocView help page), SettingsPage -> the non-tool
+  pages
 
 NOTES:
 -----
@@ -65,7 +73,7 @@ from .gui_game import AssistantGUI, PlayerGUI
 from .gui_sim import OptimizerGUI, SimulatorGUI
 from .system import cpu_count, scan
 from .theme import Theme, font
-from .widgets import rounded_rect, text_width, wrap_to
+from .widgets import DocView, rounded_rect, text_width, wrap_to
 
 TOOLS = [
     ("Game Player", PlayerGUI,
@@ -102,28 +110,19 @@ PAGE_TITLES = {key: label.split("  ")[-1] for _section, items in NAVIGATION
 # --------------------------------------------------------------------------- #
 
 class TextPage:
-    """A heading and a block of read-only text (rules, strategy, help)."""
+    """A help page drawn as a formatted document (widgets.DocView): rules,
+    strategy, tool guide, shortcuts. The title is the page's own heading."""
 
     def __init__(self, parent: tk.Misc, app: "App", title: str, body: str):
         self.app = app
+        self.title = title
         self.frame = ttk.Frame(parent, padding=14)
         self.frame.grid(row=0, column=0, sticky="nsew")
         parent.rowconfigure(0, weight=1)
         parent.columnconfigure(0, weight=1)
-        ttk.Label(self.frame, text=title, style="Heading.TLabel").pack(anchor="w",
-                                                                       pady=(0, 10))
-        holder = ttk.Frame(self.frame)
-        holder.pack(fill="both", expand=True)
-        scroll = ttk.Scrollbar(holder)
-        scroll.pack(side="right", fill="y")
-        self.text = tk.Text(holder, wrap="word", font=font("mono", 11), padx=16, pady=12,
-                            yscrollcommand=scroll.set)
-        self.text.pack(side="left", fill="both", expand=True)
-        scroll.config(command=self.text.yview)
-        self.text.insert("1.0", body)
-        self.text.config(state="disabled")
-        themes.style_text_widget(self.text, themes.current())
-        themes.subscribe(self.frame, lambda t: themes.style_text_widget(self.text, t))
+        self.doc = DocView(self.frame, body)
+        self.doc.pack(fill="both", expand=True)
+        self.text = self.doc.text
 
 
 class HomePage:
@@ -202,6 +201,7 @@ class SettingsPage:
         t = themes.current()
         self.theme_var = tk.StringVar()
         self.odds_var = tk.BooleanVar()
+        self.counts_var = tk.BooleanVar()
         self.cores_var = tk.StringVar()
         self.saved_var = tk.StringVar(value="")
         self.loaded: Dict[str, object] = {}
@@ -234,9 +234,12 @@ class SettingsPage:
 
         ttk.Label(f, text="Game pages", style="TLabelframe.Label").grid(
             row=3, column=0, sticky="w")
-        ttk.Checkbutton(f, text="Show odds & counts by default (Ctrl+O still switches them "
-                        "on a page)", variable=self.odds_var).grid(
-            row=4, column=0, columnspan=2, sticky="w", pady=(4, 14))
+        switches = ttk.Frame(f)
+        switches.grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 14))
+        ttk.Checkbutton(switches, text="Show odds by default (Ctrl+O still switches them on "
+                        "a page)", variable=self.odds_var).pack(anchor="w")
+        ttk.Checkbutton(switches, text="Show counts by default (Ctrl+K still switches them on "
+                        "a page)", variable=self.counts_var).pack(anchor="w", pady=(2, 0))
 
         ttk.Label(f, text="Simulator and Optimizer", style="TLabelframe.Label").grid(
             row=5, column=0, sticky="w")
@@ -263,6 +266,7 @@ class SettingsPage:
     def _values(self) -> Dict[str, object]:
         cores = self.cores_var.get()
         return {"theme": self.theme_var.get(), "show_odds": bool(self.odds_var.get()),
+                "show_counts": bool(self.counts_var.get()),
                 "cpu_workers": "auto" if cores == "Auto" else int(cores)}
 
     def reload(self):
@@ -271,6 +275,7 @@ class SettingsPage:
         workers = current["cpu_workers"]
         self.theme_var.set(themes.current().name)
         self.odds_var.set(bool(current["show_odds"]))
+        self.counts_var.set(bool(current["show_counts"]))
         self.cores_var.set("Auto" if workers == "auto" else str(workers))
         self.loaded = self._values()
 
@@ -308,8 +313,8 @@ class SettingsPage:
         if changed:
             app_settings.update(**changed)
         self.loaded = values
-        self.saved_var.set("Saved. The theme applies everywhere now; the odds default "
-                           "applies to game pages opened from now on.")
+        self.saved_var.set("Saved. The theme applies everywhere now; the odds and counts "
+                           "defaults apply to game pages opened from now on.")
 
 
 # --------------------------------------------------------------------------- #
