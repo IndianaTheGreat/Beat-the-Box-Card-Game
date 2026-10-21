@@ -4,9 +4,15 @@ GAME PLAYER AND GAME ASSISTANT PAGES
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/gui_game.py
 Status: ACTIVE
-Version: 1.4
+Version: 1.5
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 308 passed)
+Last Tested: 2026-10-20 (pytest: 311 passed)
+
+VERSION 1.5 CHANGES (2026-10-20):
+- Fixes the odds table's sideways scrollbar in a big window: the Card
+  column is narrow again (jokers show as "★ Big" / "★ Little", from
+  table_name), and the side panel may grow past SIDE_WIDTH, into room the
+  cards don't need, until the whole table fits (odds_table_width).
 
 VERSION 1.4 CHANGES (2026-10-20):
 - Cards left has two views, Simple and Cards (widgets.CardsLeftView),
@@ -122,7 +128,8 @@ KEY FUNCTIONS:
 - PlayerGUI(parent, app).new_game / box_clicked / make_call / undo /
   skip_recovery / toggle_odds / toggle_counts / show_probabilities /
   show_remaining_cards / choose_view / sort_odds / update_side_view
-- odds_columns(), odds_rows(box, odds), sort_odds_rows(rows, column, mode)
+- odds_columns(), odds_rows(box, odds), sort_odds_rows(rows, column, mode),
+  table_name(card), odds_table_width()
   -> the odds table's columns, rows and sorting
 - AssistantGUI -> same page plus the flipped-card grid
 
@@ -228,9 +235,23 @@ def _why_not(card: Card, call: str, inclusive_left: int) -> str:
 def odds_columns() -> dict:
     """Odds-table columns: the card first, its box, the calls in button
     order, the tie chance and the best plain call."""
-    return {"card": ("Card", 92, "center"), "box": ("Box", 42, "center"),
+    return {"card": ("Card", 64, "center"), "box": ("Box", 42, "center"),
             **{call: (CALL_ARROWS[call], 60, "center") for call in CALL_ORDER},
             "exact": ("Tie", 60, "center"), "best": ("Best", 78, "center")}
+
+
+def table_name(card: Card) -> str:
+    """A card as the odds table shows it: "A♥", or a short joker name
+    ("★ Big", "★ Little", "★ Joker") that fits the narrow Card column."""
+    if not card.is_joker:
+        return card.label()
+    return "★ " + {"big": "Big", "little": "Little"}.get(card.kind, "Joker")
+
+
+def odds_table_width() -> int:
+    """Pixels the odds table needs to show every column without scrolling:
+    the columns, the scrollbar beside them and the panel's padding."""
+    return sum(width for _heading, width, _anchor in odds_columns().values()) + 30 + 2 * 12
 
 
 def odds_rows(box: List[Optional[Card]], odds_all) -> List[tuple]:
@@ -243,7 +264,7 @@ def odds_rows(box: List[Optional[Card]], odds_all) -> List[tuple]:
         if card is None:
             rows.append((position, ("Failed", key, *[""] * blanks), None))
         elif odds is None:
-            rows.append((position, (card.name, key, *["-"] * blanks), None))
+            rows.append((position, (table_name(card), key, *["-"] * blanks), None))
         else:
             if card.is_joker:
                 best_text, best = "Sure win", 1.0
@@ -253,7 +274,7 @@ def odds_rows(box: List[Optional[Card]], odds_all) -> List[tuple]:
             keys = {"card": 15 if card.is_joker else card.rank,    # a joker beats an A
                     "box": int(key), "exact": odds.exact, "best": best,
                     **{call: odds.for_call(call) for call in CALL_ORDER}}
-            rows.append((position, (card.name, key, *(_percent(odds.for_call(c))
+            rows.append((position, (table_name(card), key, *(_percent(odds.for_call(c))
                                                  for c in CALL_ORDER),
                                     _percent(odds.exact), best_text), keys))
     return rows
@@ -576,7 +597,9 @@ class PlayerGUI:
 
     def _share_width(self, _event=None):
         """Give the cards the width their height allows; the side panel gets
-        the rest, within SIDE_WIDTH."""
+        the rest, within SIDE_WIDTH. When the cards leave room to spare, the
+        panel may grow past SIDE_WIDTH until the whole odds table fits, so it
+        doesn't need a sideways scrollbar in a big window."""
         try:
             room = self.frame.winfo_width() - 28
             board_height = self.board.winfo_height()
@@ -588,6 +611,7 @@ class PlayerGUI:
         card_height = max(CardView.MIN_HEIGHT, board_height / 3 - 2 * m - CardView.FOOTER - 4)
         board_need = 3 * (card_height * CardView.ASPECT + 2 * m + 6)
         low, high = self.SIDE_WIDTH
+        high = max(high, odds_table_width())
         self.side_scroll.set_width(int(max(low, min(high, room - board_need - 16))))
 
     def build_side_panel(self):

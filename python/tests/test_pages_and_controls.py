@@ -4,9 +4,15 @@ ONE-WINDOW APP, CALL BUTTONS AND RESIZING TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_pages_and_controls.py
 Status: ACTIVE
-Version: 1.2
+Version: 1.3
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 308 passed)
+Last Tested: 2026-10-20 (pytest: 311 passed)
+
+VERSION 1.3 CHANGES (2026-10-20):
+- The fit test checks only the flip buttons on show (a 1-joker game hides
+  the Little Joker; on Windows the hidden button counted as "cut off").
+- New: no sideways scrollbar on the odds table at 1306 x 678 or larger,
+  and the jokers' short names in the table.
 
 VERSION 1.2 CHANGES (2026-10-20):
 - The toolbar test checks the rule (short labels exactly when the long
@@ -605,7 +611,9 @@ def important_widgets(app, key):
         found = list(page.call_buttons.values()) + [v.canvas for v in page.box_views]
         found += [page.heading_label, page.history_list]
         if key == "assistant":
-            found += [b for _c, b in page.flip_grid.buttons] + [page.flip_label]
+            # Only the buttons on show: a 1-joker game hides the Little Joker.
+            found += [b for _c, b in page.flip_grid.buttons if b.winfo_manager()]
+            found += [page.flip_label]
         return found
     if key in ("simulator", "optimizer"):
         found = [page.run_button, page.notebook] + page.export_buttons
@@ -661,3 +669,31 @@ def test_every_page_fits_and_settles(tk_root, app, no_dialogs, size):
             assert charts.winfo_ismapped() and scroll_matches(charts)
             assert reachable(page.adv_charts[0].canvas, app.root)
             page.notebook.select(0)
+
+
+@pytest.mark.parametrize("size", ["1306x678", "1667x967"])
+def test_the_odds_table_needs_no_sideways_scrollbar_in_a_big_window(tk_root, app, no_dialogs,
+                                                                     size):
+    # Seen at large sizes: a wider Card column made the table wider than the
+    # side panel's limit, so a sideways scrollbar stayed while the cards had
+    # room to spare. The panel now grows (into that spare room) to fit it.
+    from btb.gui_game import GameSettings, odds_table_width
+    app.root.geometry(size)
+    player = app.show_page("player")
+    player.new_game(GameSettings(2, 5))
+    player.show_probabilities()
+    pump(tk_root)
+    tk_root.after(200)
+    pump(tk_root)
+    first, last = (float(v) for v in player.prob_tree.xview())
+    assert (first, last) == (0.0, 1.0), f"the odds table scrolls sideways at {size}"
+    assert player.side_scroll.canvas.winfo_width() <= odds_table_width() + 2
+    for view in player.box_views:                  # the cards kept the size they had
+        assert view.height >= 80
+
+
+def test_jokers_have_short_names_in_the_odds_table():
+    pytest.importorskip("tkinter")
+    from btb.gui_game import table_name
+    assert [table_name(c) for c in (Card.joker("big"), Card.joker("little"), Card.joker(),
+                                     card("10♠"))] == ["★ Big", "★ Little", "★ Joker", "10♠"]

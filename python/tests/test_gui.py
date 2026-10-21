@@ -4,9 +4,12 @@ GUI SMOKE TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_gui.py
 Status: ACTIVE
-Version: 1.4
+Version: 1.5
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 308 passed)
+Last Tested: 2026-10-20 (pytest: 311 passed)
+
+VERSION 1.5 CHANGES (2026-10-20):
+- The odds table shows a joker as "★ Joker" (short names).
 
 VERSION 1.4 CHANGES (2026-10-20):
 - Recovery brings back the card that beat the box (the 5 that beat a K);
@@ -128,7 +131,7 @@ def test_probability_window_tracks_the_game(tk_root, window, no_dialogs):
     rows = [gui.prob_tree.item(i, "values") for i in gui.prob_tree.get_children()]
     # Columns: card, box, then the calls in button order (▲=, ▲, ▼, ▼=), tie,
     # best plain call. Rows: best chance first (the joker is a sure win).
-    assert rows[0][:2] == ("Joker", "8") and rows[0][3] == "100.0%" and rows[0][7] == "Sure win"
+    assert rows[0][:2] == ("★ Joker", "8") and rows[0][3] == "100.0%" and rows[0][7] == "Sure win"
     assert rows[1][:2] == ("8♠", "7")
     assert rows[1][2:6] == ("75.0%", "75.0%", "25.0%", "25.0%") and rows[1][7] == "▲ 75.0%"
     gui.box_clicked(0)
