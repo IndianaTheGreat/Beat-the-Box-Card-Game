@@ -75,7 +75,7 @@ From the `python` folder:
 
 ```powershell
 python -m pip install -r requirements-dev.txt
-python -m pytest                          # the whole suite, about a minute
+python -m pytest                          # the whole suite, one to three minutes
 python -m pytest tests/test_rules.py      # one file
 ```
 
@@ -94,6 +94,16 @@ sudo dnf install python3-tkinter # Fedora
 ```
 
 </details>
+
+### 🧩 Testing the Chrome version
+
+The Chrome version is being built in `extension/`. Its rules engine, strategy and simulator are done, and they give the same answer as the Python ones for every case in `shared/test_vectors.json` (the same deals, odds, moves and win rates). Its tests need [Node.js](https://nodejs.org) 22.18 or newer and nothing else: no `npm install`. From the `extension` folder:
+
+```powershell
+node --test
+```
+
+After a rule change, rewrite the shared answers from the `python` folder with `python -m btb.vectors`, then run both test suites. The Python suite fails until the file is rewritten, and the Chrome suite fails until its engine matches again.
 
 ### ⌨️ Game Player shortcuts
 
@@ -122,10 +132,18 @@ Beat-the-Box-Card-Game/
 │   ├── STRATEGY.md      ← how to play well, with simulated win rates
 │   ├── GUIDE.md         ← what each tool does and how it works
 │   └── CARD_COUNTING.md ← the card counts explained, with a review of how well they work
+├── shared/
+│   └── test_vectors.json ← known answers both versions are tested against
+├── extension/           ← the Chrome version (in progress)
+│   ├── src/                 engine.ts, strategy.ts, sim.ts: the same rules in TypeScript
+│   ├── tests/               Node tests that check them against shared/test_vectors.json
+│   ├── package.json
+│   └── tsconfig.json
 └── python/              ← the Python / Tkinter suite
     ├── main.py              starts the app
     ├── btb/
     │   ├── app.py           the one window: sidebar, Home, help pages, Settings
+    │   ├── vectors.py       writes shared/test_vectors.json for the Chrome version's tests
     │   ├── engine.py        the rules engine: no GUI, used by every tool
     │   ├── strategy.py      the simulator's playing policy
     │   ├── sim.py           batches, sweeps, margins of error, parallel runs
@@ -144,7 +162,7 @@ Beat-the-Box-Card-Game/
     └── requirements-dev.txt
 ```
 
-Every tool plays through `btb/engine.py`, so the rules live in one place. Seeded deals use a Mulberry32 shuffle that the TypeScript port can reproduce card for card.
+Every tool plays through `btb/engine.py`, so the rules live in one place. The Chrome version plays through `extension/src/engine.ts`, which is checked against the Python engine's answers in `shared/test_vectors.json`. Seeded deals use a Mulberry32 shuffle, so the same seed deals the same game in both.
 
 ---
 
@@ -158,8 +176,8 @@ Every tool plays through `btb/engine.py`, so the rules live in one place. Seeded
 - [x] **One window.** A sidebar instead of pop-ups, a board that resizes, call buttons paired by direction with dead calls greyed out, and a [card-counting guide](docs/CARD_COUNTING.md).
 - [x] **Polish.** Separate odds and counts switches, a sortable odds table, help pages that read like a document, charts in the Advanced tabs, and the docs gathered in `docs/`.
 - [x] **Play-testing fixes.** A recovered box comes back with the card that beat it, a big and a little joker, a Cards view of what's left in the pile, and the fix for the window (and the test run) freezing on Windows when the Assistant's card grid kept resizing itself.
-- [ ] **TypeScript engine.** A port of the rules engine, checked against the same tests as the Python version.
-- [ ] **Chrome extension.** Play in the browser side panel, with no install beyond the extension itself.
+- [x] **TypeScript engine.** The rules engine, strategy and simulator ported to TypeScript, giving the same answer as the Python version for every case in `shared/test_vectors.json`.
+- [ ] **Chrome extension.** Everything in the Python app (all four tools, the help pages and Settings) in Chrome, with smoother graphics and a dark mode that follows Chrome. No install beyond the extension itself.
 
 ---
 

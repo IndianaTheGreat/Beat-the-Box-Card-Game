@@ -4,9 +4,14 @@ BTB PACKAGE
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/__init__.py
 Status: ACTIVE
-Version: 1.3
+Version: 1.4
 Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 308 passed)
+Last Tested: 2026-10-20 (pytest: 313 passed)
+
+VERSION 1.4 CHANGES (2026-10-20):
+- Lists the new btb.vectors, which writes shared/test_vectors.json: the
+  answers the Chrome extension's TypeScript engine is tested against.
+  The game itself is unchanged, so the suite version stays 1.4.0.
 
 VERSION 1.3 CHANGES (2026-10-20):
 - Suite version 1.4.0: a recovered box comes back with the card that beat
@@ -45,6 +50,7 @@ rules live in exactly one place.
     btb.gui_game  Game Player and Game Assistant pages
     btb.gui_sim   Simulator and Strategy Optimizer pages
     btb.app       the one window: sidebar, Home, help pages, Settings
+    btb.vectors   known answers shared with the TypeScript engine
 
 NOTES:
 -----
