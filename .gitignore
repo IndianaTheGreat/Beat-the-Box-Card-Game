@@ -4,10 +4,11 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+.pytest_cache/
 build/
 dist/
 
-# Node / TypeScript (for the upcoming extension + web build)
+# Node / TypeScript (the Chrome extension)
 node_modules/
 *.zip
 *.crx

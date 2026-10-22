@@ -4,9 +4,13 @@ SIMULATOR STRATEGY POLICY
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/strategy.py
 Status: ACTIVE
-Version: 1.1
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 218 passed)
+Version: 1.2
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 345 passed)
+
+VERSION 1.2 CHANGES (2026-10-21):
+- NOTES only: the threshold test is strictly greater (a gain exactly
+  equal to the threshold keeps the plain call). No code change.
 
 VERSION 1.1 CHANGES (2026-10-20):
 - Faster: choose_move reads one odds table per turn (engine.odds_by_rank)
@@ -49,8 +53,9 @@ NOTES:
 - threshold: percentage points an inclusive call must add over the best
   plain call before one is spent. 0 spends one on any gain. In practice
   the gain is the chance the next card ties the box card, so the
-  threshold reads as "only spend a call when a tie is at least this
-  likely".
+  threshold reads as "only spend a call when a tie is more likely than
+  this". The test is strictly greater: a gain exactly equal to the
+  threshold keeps the plain call.
 - Ties are broken by probability, recovery chance, the more extreme card,
   then the higher rank. Only identical ranks fall through to position.
 """

@@ -4,9 +4,13 @@ IN-APP TEXT AND SHORTCUTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/text.py
 Status: ACTIVE
-Version: 1.5
+Version: 1.6
 Last Updated: 2026-10-21
-Last Tested: 2026-10-21 (pytest: 342 passed)
+Last Tested: 2026-10-21 (pytest: 345 passed)
+
+VERSION 1.6 CHANGES (2026-10-21):
+- The threshold is described as "adds more than" that many points, which
+  is how the strategy works (it said "at least").
 
 VERSION 1.5 CHANGES (2026-10-21):
 - How to Play: a recovery earned on the last card can still be used (or
@@ -236,7 +240,7 @@ or a flip). A recovered card is not counted again. Jokers and 8s count 0.
 - So don't spend them early on any middle card. Wait until a rank is
   crowded in the pile, when a tie is much more likely.
 - The simulator's **threshold** puts a number on this. It spends a call
-  only when it adds at least that many points. 10 is the best all-rounder for
+  only when it adds more than that many points. 10 is the best all-rounder for
   5 to 10 calls; with only 1 to 3 calls, 15 does as well or better.
 - With lots of calls (15 or more), spend them more freely (threshold
   about 5, or 0 when you have one for nearly every card). Unused calls are
@@ -331,7 +335,7 @@ The built-in strategy plays thousands of games with one setting, and the
 page reports how it did.
 
 The strategy plays the plain call with the best odds, and spends an
-inclusive call only when it adds at least the **threshold** in points of
+inclusive call only when it adds more than the **threshold** in points of
 win chance. It plays an inclusive call on a joker in the box once a box
 has failed, plays the joker right away once no inclusive calls are left,
 and recovers the failed box with the most extreme card.

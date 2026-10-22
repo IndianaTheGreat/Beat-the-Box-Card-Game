@@ -4,9 +4,13 @@ SIMULATOR AND STRATEGY OPTIMIZER PAGES
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/btb/gui_sim.py
 Status: ACTIVE
-Version: 1.4
+Version: 1.5
 Last Updated: 2026-10-21
-Last Tested: 2026-10-21 (pytest: 342 passed)
+Last Tested: 2026-10-21 (pytest: 345 passed)
+
+VERSION 1.5 CHANGES (2026-10-21):
+- The threshold hint says "adds more than this many points", which is how
+  the strategy works (it said "at least").
 
 VERSION 1.4 CHANGES (2026-10-21):
 - Optimizer: the number of thresholds is worked out before the list is
@@ -822,7 +826,7 @@ class SimulatorGUI(_RunnerWindow):
         for r, (label, widget) in enumerate(rows):
             ttk.Label(form, text=label).grid(row=r, column=0, sticky="w", pady=3)
             widget.grid(row=r, column=1, sticky="w", pady=3, padx=(8, 0))
-        ttk.Label(form, text="Threshold: only spend an inclusive call when it adds at least "
+        ttk.Label(form, text="Threshold: only spend an inclusive call when it adds more than "
                   "this many points of win chance.", style="Muted.TLabel",
                   wraplength=self.WRAP).grid(row=len(rows), column=0, columnspan=2,
                                              sticky="w", pady=(6, 0))

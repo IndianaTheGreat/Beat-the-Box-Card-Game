@@ -55,7 +55,7 @@ The game shows all three counts (Ctrl+K, **Show counts**), each with ▼ or ▲ 
 
 ## ✅ The Basic Count Is Exact
 
-The deck is symmetric around the `8`, with 24 low cards (`2`–`7`) and 24 high cards (`9`–`A`). Because of that, the Basic count isn't an estimate:
+The deck is symmetric around the `8`, with 24 low cards (`2` to `7`) and 24 high cards (`9` to `A`). Because of that, the Basic count isn't an estimate:
 
 > **Basic count = low cards left − high cards left.** This holds at every point in every game.
 
@@ -80,7 +80,7 @@ The same count means more as the pile gets smaller. +4 with 40 cards left means 
 
 ## 🃏 Using the Count at the Table
 
-1. **Extreme cards first.** A `2`–`4` or a `J`–`A` in the box is usually your best play whatever the count says. Call toward the middle.
+1. **Extreme cards first.** A `2` to `4` or a `J` to `A` in the box is usually your best play whatever the count says. Call toward the middle.
 2. **An `8` follows the count exactly.** A positive Basic count means Lower is better and a negative one means Higher. At zero they are equal (see the example above).
 3. **A `7` or a `9` already favours one side, and the count has to overcome that.** A `7` has more cards above it than below, and a `9` more below than above. That is because the `8`s count for the far side, and a card of the same rank loses a plain call either way.
    - On a `7`, Lower is better only when the Basic count is more than the number of `7`s and `8`s still in the pile. Otherwise call Higher.
@@ -103,7 +103,7 @@ Each player below uses the same strategy as the Simulator, but decides from a di
 | Advanced count | 12.2% | 26.6% | 42.4% |
 | Exact odds | 12.9% | 38.7% | 59.5% |
 
-*(No help = no jokers and no inclusive calls. Calls are spent with a threshold of 10. Each figure is accurate to about ±0.6–1.0 points.)*
+*(No help = no jokers and no inclusive calls. Calls are spent with a threshold of 10. Each figure is accurate to about ±0.6 to 1.0 points.)*
 
 > [!NOTE]
 > These figures predate the recovery change in version 1.4.0. Under the new rule the Exact odds player gains 2 to 3 points in the joker columns; the counters weren't re-run. See [How the Review Was Done](#-how-the-review-was-done).
@@ -123,9 +123,9 @@ Besides the three counts in the game, the review tried three others:
 | **Basic** | 12.2% | 95.7% |
 | Weighted | 12.3% | 95.4% |
 | Advanced | 12.2% | 95.2% |
-| *Hi-Lo with 7 and 9 neutral* (2–6 = −1, 10–A = +1) | 12.1% | 95.1% |
+| *Hi-Lo with 7 and 9 neutral* (2 to 6 = −1, 10 to A = +1) | 12.1% | 95.1% |
 | *Linear* (each card counts its rank minus 8: 2 = −6 … A = +6) | 11.8% | 95.0% |
-| *Extremes only* (2–3 = −1, K–A = +1) | 9.7% | 88.4% |
+| *Extremes only* (2 to 3 = −1, K to A = +1) | 9.7% | 88.4% |
 
 The three counts in the game are equally good. The differences are smaller than the margin of error. Weighting the extreme cards more (Weighted, Advanced, Linear) doesn't help, because the decisions a count actually changes are the middle cards, and for those what matters is how many cards are above or below. Counting only the extremes throws away too much.
 
@@ -173,7 +173,7 @@ With no inclusive calls, tracking ranks adds nothing measurable (11.7% against 1
 - **Counters:** each one turns its count into an estimated pile. It assumes every rank was seen about equally often, then shifts the estimate in proportion to each rank's weight in the count so it matches the count exactly. For Basic this closely matches the exact low/high split above (the count can't see the `8`s, so those are estimated). The strategy then plays from the estimated odds instead of the exact ones.
 - **"Ranks in your box":** the same, except that for every rank currently in the box the counter uses the true number left.
 - **"Best play made":** at every turn of the no-help games, whether the counter's chosen box and call had the same chance of winning as the best play available.
-- **Margins:** with 10,000 games a win rate is accurate to about ±0.6 points near 12% and ±1.0 near 40–60%.
+- **Margins:** with 10,000 games a win rate is accurate to about ±0.6 points near 12% and ±1.0 near 40 to 60%.
 
 This review uses the engine's own odds formula (`odds_by_rank`) on the estimated piles. The study code isn't part of the app; the "play by the count" idea above would make it repeatable from the Simulator.
 

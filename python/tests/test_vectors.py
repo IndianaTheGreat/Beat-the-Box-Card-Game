@@ -4,9 +4,14 @@ SHARED TEST VECTOR TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_vectors.py
 Status: ACTIVE
-Version: 1.1
+Version: 1.2
 Last Updated: 2026-10-21
-Last Tested: 2026-10-21 (pytest: 314 passed)
+Last Tested: 2026-10-21 (pytest: 342 passed)
+
+VERSION 1.2 CHANGES (2026-10-21):
+- New test_vectors_file_has_a_header: shared/test_vectors.json starts
+  with a "_header" that says where it lives and which version of
+  btb/vectors.py wrote it, and that version matches vectors.py's header.
 
 VERSION 1.1 CHANGES (2026-10-21):
 - New test_vectors_catch_easy_port_mistakes: the vectors must keep a
@@ -30,7 +35,7 @@ rewrite the file, then run the extension's tests too.
 DEPENDENCIES:
 ------------
 - btb.vectors
-- Standard library: functools, json
+- Standard library: functools, json, re
 - pytest
 
 KEY FUNCTIONS:
@@ -50,6 +55,7 @@ NOTES:
 
 import functools
 import json
+import re
 
 from btb import vectors
 
@@ -115,3 +121,13 @@ def test_vectors_catch_easy_port_mistakes():
 
     # A value no game reached must not count as the smallest or largest.
     assert any(0 in row["tally"].values() for row in data["stats"]["tallies"])
+
+def test_vectors_file_has_a_header():
+    """JSON can't hold comments, so the file's header is its first key."""
+    data = fresh_vectors()
+    assert next(iter(data)) == "_header"
+    header = data["_header"]
+    assert header["file_location"] == "Beat-the-Box-Card-Game/shared/test_vectors.json"
+    assert header["written_by"] == "python/btb/vectors.py"
+    docstring_version = re.search(r"^Version: (\S+)$", vectors.__doc__, re.M).group(1)
+    assert header["writer_version"] == vectors.VECTORS_VERSION == docstring_version

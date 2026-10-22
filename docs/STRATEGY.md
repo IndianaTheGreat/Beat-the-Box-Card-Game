@@ -81,16 +81,16 @@ At the start of a game that chance is small. For any box card, 3 of the other 51
 
 *(A full 52-card deck with no jokers, before any card is drawn.)*
 
-So an inclusive call spent early buys you about 6 points. Later in the game, when one rank is crowded in a small pile, a tie can be 15–25% likely, and the same call is worth three or four times as much. Save them for those moments.
+So an inclusive call spent early buys you about 6 points. Later in the game, when one rank is crowded in a small pile, a tie can be 15 to 25% likely, and the same call is worth three or four times as much. Save them for those moments.
 
-The Simulator's threshold puts a number on this. The strategy spends an inclusive call only when it adds at least that many points over the best plain call. Measured on 5,000 games per setting:
+The Simulator's threshold puts a number on this. The strategy spends an inclusive call only when it adds more than that many points over the best plain call. Measured on 5,000 games per setting:
 
 | Inclusive calls | Best threshold | Why |
 |---|---|---|
-| 1–3 | **10–15** (up to 20 with 2 jokers) | With very few calls, keep them for big ties and joker recoveries. |
-| 5–10 | **10** | The best all-rounder. |
-| 15–30 | **about 5** | With plenty of calls, spend them more freely. (0 or 10 occasionally edges it, within the margin of error.) |
-| One per card (43+) | **0** | Spend one on every flip. Unused calls are wasted. |
+| 1 to 3 | **10 to 15** (up to 20 with 2 jokers) | With very few calls, keep them for big ties and joker recoveries. |
+| 5 to 10 | **10** | The best all-rounder. |
+| 15 to 30 | **about 5** | With plenty of calls, spend them more freely. (0 or 10 occasionally edges it, within the margin of error.) |
+| One per card (43+) | **0** | Spend one on every flip where a tie is possible. Unused calls are wasted. |
 
 A bad threshold costs a lot. With no jokers and 5 inclusive calls:
 
@@ -160,9 +160,9 @@ Best win rate for each setting, and the threshold that achieved it. Each cell is
 The main results:
 
 - **Even with no help at all, you beat the box about 1 game in 8.**
-- **Each joker adds roughly 10–15 points** once you have a few inclusive calls to spend on it.
+- **Each joker adds roughly 10 to 15 points** once you have a few inclusive calls to spend on it.
 - **The first 5 calls are worth the most** when spent carefully: 13% → 27% with no jokers.
-- **Winning games usually end with 2–4 boxes left**; with lots of calls and jokers, closer to 5–6.
+- **Winning games usually end with 2 to 4 boxes left**; with lots of calls and jokers, closer to 5 or 6.
 
 ---
 

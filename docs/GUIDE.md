@@ -48,7 +48,8 @@
                      main.py  (starts it)
 ```
 
-- **The engine is the only place the rules live.** The pages, the strategy and the simulator all call it, and none of them has a rule of its own. The TypeScript version (Phase 2) will be checked against the same tests.
+- **The engine is the only place the rules live.** The pages, the strategy and the simulator all call it, and none of them has a rule of its own.
+- **The Chrome version** (`extension/`) has the same engine, strategy and simulator in TypeScript. `btb/vectors.py` writes the Python engine's answers to `shared/test_vectors.json` (deals, odds, whole games, batches and sweeps), and the TypeScript tests must give exactly the same ones.
 - **Other modules:** `theme.py` (colours and fonts), `settings.py` (what is remembered), `widgets.py` (the drawn cards, tiles, charts and help pages), `system.py` (how many CPU cores a run may use), `text.py` (help text and shortcuts), `markup.py` (reads the light Markdown the help text is written in).
 - **Everything is standard-library Python.** You only need Python itself.
 
@@ -83,7 +84,7 @@ Everything happens in one window. The **sidebar** on the left switches pages:
 
 | Setting | What it does |
 |---|---|
-| **Theme** | Eight colour themes, numbered 1–8, each with a small preview. The theme applies to the whole window when you press Save. |
+| **Theme** | Eight colour themes, numbered 1 to 8, each with a small preview. The theme applies to the whole window when you press Save. |
 | **Show odds by default** | Whether the Player and Assistant pages start with the odds showing (under the cards, and the odds table), for pages not opened yet in this session. Ctrl+O still switches them on a page without changing this default. |
 | **Show counts by default** | The same for the counts (the three card counts, your plays and the cards left). Ctrl+K switches them on a page. A settings file from before this split uses its old "odds & counts" choice for both. |
 | **CPU cores** | How many processes the Simulator and Optimizer may use. **Auto** (recommended) checks what is free each time. **Scan Now** shows what Auto would pick right now. |
@@ -97,6 +98,8 @@ Settings are remembered in a small file in your user folder:
 | Windows | `%APPDATA%\BeatTheBox\settings.json` |
 | macOS | `~/Library/Application Support/BeatTheBox/settings.json` |
 | Linux | `~/.config/beat-the-box/settings.json` |
+
+With the Microsoft Store Python, Windows quietly moves that file into the Store app's own folder, so look here instead: `%LOCALAPPDATA%\Packages\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\LocalCache\Roaming\BeatTheBox\settings.json` (the `3.11` part follows your Python version). The game finds it either way.
 
 Delete that file to go back to the defaults.
 
@@ -135,7 +138,7 @@ This is only a guard rail on screen. [RULES.md](RULES.md) still allows every cal
 
 ### A turn, step by step
 
-1. Press **New Game** (Ctrl+N) and the settings appear beside the board. Choose 0–2 jokers, the number of inclusive calls, and whether failed cards are shown when recovering, then **Start Game**.
+1. Press **New Game** (Ctrl+N) and the settings appear beside the board. Choose 0 to 2 jokers, the number of inclusive calls, and whether failed cards are shown when recovering, then **Start Game**.
 2. Select a box by clicking it or pressing its number key.
 3. Make your call. Click a call button or press D / W / S / A.
 4. The banner shows what was drawn and whether you were right. A correct card replaces the box card. On a wrong call the drawn card goes on top of the box card and the box fails. If the box is recovered later, it comes back with that top card.
@@ -152,9 +155,9 @@ This is only a guard rail on screen. [RULES.md](RULES.md) still allows every cal
 
 ### How it works inside
 
-- **New Game** shuffles with a seeded Mulberry32 generator (the same one the TypeScript version will use) and deals through `Game.new`.
+- **New Game** shuffles with a seeded Mulberry32 generator (the TypeScript version uses the same one, so a seed deals the same game in both) and deals through `Game.new`.
 - **Each call** is one `Game.play(position, call)`. The engine flips the top card, decides success with `call_wins`, checks for an exact match, updates the counts, and reports whether a recovery was earned, is waiting, or was lost (nothing to recover).
-- **Greyed-out calls** come from the engine's `offered_calls`, and the reason shown for one from `call_blocked_reason`, so the TypeScript version will offer exactly the same buttons and reasons.
+- **Greyed-out calls** come from the engine's `offered_calls`, and the reason shown for one from `call_blocked_reason`, and the TypeScript version has the same two functions with the same answers, so it offers exactly the same buttons and reasons.
 - **Jokers:** a two-joker deck has a Big Joker (green) and a Little Joker (purple), so you can tell them apart on the board, in the banner and in the odds table. They only look different. In the engine they are equal cards, so odds, counts and statistics treat them the same.
 - **Odds** come from `Game.odds_all`, which counts the ranks left in the pile. The denominator is the number of cards in the pile; a joker in the pile counts as a win for every call.
 - **Undo** restores a full snapshot of the game taken before each play, so nothing can drift out of step.
@@ -197,7 +200,7 @@ The Simulator lets the built-in strategy play thousands of games with one settin
 | **Number of games** | More games give a more accurate win rate (see *margin of error* below). 10,000 is a good default. |
 | **Jokers** | 0, 1 or 2. |
 | **Inclusive calls** | 0 up to 43 + jokers. |
-| **Threshold (% points)** | The strategy spends an inclusive call only when it adds at least this many points of win chance over the best plain call. Default 10. See [STRATEGY.md](STRATEGY.md#%EF%B8%8F-inclusive-calls). |
+| **Threshold (% points)** | The strategy spends an inclusive call only when it adds more than this many points of win chance over the best plain call. Default 10. See [STRATEGY.md](STRATEGY.md#%EF%B8%8F-inclusive-calls). |
 | **Seed** | Leave blank for a random one (it is shown in the results). The same seed always deals the same games, so a run can be repeated exactly. |
 | **CPU cores** | Auto (recommended) or a fixed number. Remembered between runs and shared with the Optimizer and Settings, so a change in one shows up in the others. |
 
@@ -232,7 +235,7 @@ In a narrow window the four tiles go two by two and the details table gets a sid
 
 **The strategy** (`btb/strategy.py`), each turn:
 
-1. If a joker is in the box, play it when no inclusive calls are left. With a failed box and a call left, spend an inclusive call on it (a guaranteed recovery). Otherwise hold it.
+1. If a joker is in the box, play it when no inclusive calls are left. With a failed box and a call left, spend an inclusive call on it (a guaranteed recovery). Otherwise hold it, unless jokers are the only live boxes left, when it is played.
 2. Find the box whose best plain call has the highest odds.
 3. Find the box whose best inclusive call has the highest odds.
 4. Spend the inclusive call only if it beats the plain call by more than the threshold.
@@ -352,7 +355,7 @@ To add a theme, copy one `Theme(...)` block in `THEMES`, give it a new name and 
 
 ## 🧪 Tests
 
-The tests in `python/tests/` are the executable spec, and they will be the spec for the TypeScript port too.
+The tests in `python/tests/` are the executable spec. The TypeScript port is held to the same answers through `shared/test_vectors.json` (see *The Chrome version's tests* below).
 
 | File | Covers |
 |---|---|
@@ -365,7 +368,8 @@ The tests in `python/tests/` are the executable spec, and they will be the spec 
 | `test_help_and_charts.py` | The help-page markup and how it is drawn (headings, lists, tables, chips, copying, every theme); the chart data and the charts; the test set-up itself (one Tk root, cleaned after every test) |
 | `test_pages_and_controls.py` | Greyed-out calls and their reasons, button order and colours, the two switches, the sidebar pages (kept state, keys only on the page showing, nothing pops up), the New Game panel, in-page messages, the Settings page, resizing, and that every page fits and settles at 960 × 620 and 1306 × 678 |
 | `test_gui.py` | Keyboard, recovery on the board, the odds table and its sorting, the card picker, Simulator and Optimizer runs, background-thread safety |
-| `test_docs.py` | RULES.md, STRATEGY.md, CARD_COUNTING.md and the in-app guide agree with the engine and with each other; every link (to a file or a heading) works |
+| `test_docs.py` | RULES.md, STRATEGY.md, CARD_COUNTING.md and the in-app guide agree with the engine and with each other; every link (to a file or a heading) works; every shortcut is in the shortcut tables |
+| `test_vectors.py` | `shared/test_vectors.json` still matches the engine (run `python -m btb.vectors` after a rule change), and still covers the cases most likely to differ in the TypeScript port |
 
 From the `python` folder:
 
@@ -378,10 +382,21 @@ python -m pytest tests/test_rules.py      # one file
 On headless Linux, run `xvfb-run python3 -m pytest` to include the window tests.
 
 - **Use `python -m pytest`, not `pytest`.** With the Microsoft Store Python, pip puts the `pytest` command in a folder that isn't on PATH, so plain `pytest` isn't found. `python -m` always works.
-- **It takes about a minute** (around 45 seconds on a recent PC). The summary lists any skipped test with its reason.
+- **It takes one to three minutes**: about a minute on Linux, nearer three on Windows, where starting helper processes and windows is slower. The summary lists any skipped test with its reason.
 - **Small windows flash on screen** while the window tests run. That's normal. Leave them alone until the run ends.
 - **A stuck test tells you where it is.** If a test runs for more than 60 seconds, pytest prints where every thread is (a traceback) so the problem can be found. Ctrl+C stops the run.
 - Run it from the `python` folder, because that is where its settings file (`pytest.ini`) is. Tests never touch your real settings file.
+
+### The Chrome version's tests
+
+They need [Node.js](https://nodejs.org) 22.18 or newer and nothing else (no `npm install`). From the `extension` folder:
+
+```powershell
+node --test                                              # every TypeScript test
+npx.cmd --yes --package=typescript@7 tsc --noEmit -p .   # optional type check
+```
+
+After a rule change, rewrite the shared answers with `python -m btb.vectors` from the `python` folder, then run both suites.
 
 ---
 
@@ -392,6 +407,7 @@ On headless Linux, run `xvfb-run python3 -m pytest` to include the window tests.
 | `No module named tkinter` (Linux) | `sudo apt install python3-tk` (Debian/Ubuntu) or `sudo dnf install python3-tkinter` (Fedora). |
 | `No module named 'btb'` when running tests | Run `python -m pytest` from the `python` folder, not the repo root. |
 | `pytest` is not recognised (Windows) | Use `python -m pytest`. The Store Python doesn't put `pytest` on PATH. |
+| `node` is not recognised (Windows) | Node.js isn't installed (or the window was opened before it was). Run `winget install OpenJS.NodeJS.LTS`, then open a new PowerShell window. |
 | The tests seem stuck | Wait for the 60-second traceback, or press Ctrl+C once, then share the traceback. Small test windows flashing up is normal. |
 | The window is cut off on a small screen | The window's smallest size is 960 × 620. Below the size a page needs, side panels and tables get scrollbars. On a screen smaller than that, lower the display scaling in your system settings. |
 | A run is slow | Check CPU cores is **Auto** (or set a number), and use fewer games per test in the Optimizer. The progress line shows games per second. |

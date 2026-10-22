@@ -4,9 +4,15 @@ STRATEGY AND SIMULATION TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_strategy_and_sim.py
 Status: ACTIVE
-Version: 1.2
-Last Updated: 2026-10-20
-Last Tested: 2026-10-20 (pytest: 295 passed, 1 xfailed)
+Version: 1.3
+Last Updated: 2026-10-21
+Last Tested: 2026-10-21 (pytest: 345 passed)
+
+VERSION 1.3 CHANGES (2026-10-21):
+- The threshold test also checks a gain exactly equal to the threshold
+  (the plain call is kept: an inclusive call must add MORE than it), and
+  threshold 0 spends nothing when no tie is possible.
+- Header: these tests need no display (the old note said otherwise).
 
 VERSION 1.2 CHANGES (2026-10-20):
 - Run command is now "python -m pytest" (works with the Microsoft Store
@@ -29,14 +35,12 @@ stopping, input validation and all-0% sweeps.
 DEPENDENCIES:
 ------------
 - pytest (requirements-dev.txt)
-- tkinter and a display for GUI tests only; they skip otherwise
+- btb.engine, btb.strategy, btb.sim; tests/helpers.py
 
 CLI USAGE:
 ---------
 # From the python/ folder
 python -m pytest tests/test_strategy_and_sim.py
-# Headless Linux, to include the GUI tests
-xvfb-run python3 -m pytest
 """
 
 import pytest
@@ -60,6 +64,16 @@ def test_policy_spends_inclusive_only_above_the_threshold():
     g = game(["8"] * 9, ["2", "8", "9", "Q"], inclusive=1)
     assert ThresholdPolicy(threshold=30).choose_move(g).call == HIGHER
     assert ThresholdPolicy(threshold=20).choose_move(g).call == HIGHER_EQUAL
+    # The gain is exactly 25 points: "more than the threshold" keeps the
+    # plain call (the docs and the Optimizer label say "more than").
+    assert ThresholdPolicy(threshold=25).choose_move(g).call == HIGHER
+
+
+def test_policy_threshold_0_spends_nothing_when_no_tie_is_possible():
+    # No 8 left in the pile: an inclusive call adds 0 points, which is not
+    # more than 0, so even threshold 0 keeps the call for later.
+    g = game(["8"] * 9, ["2", "9", "Q", "K"], inclusive=1)
+    assert ThresholdPolicy(threshold=0).choose_move(g).call == HIGHER
 
 
 def test_policy_inclusive_on_box_joker_when_a_box_has_failed():

@@ -4,9 +4,17 @@ V1 BUG REGRESSION TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_bugs.py
 Status: ACTIVE
-Version: 1.5
+Version: 1.6
 Last Updated: 2026-10-21
-Last Tested: 2026-10-21 (pytest: 342 passed)
+Last Tested: 2026-10-21 (pytest: 345 passed)
+
+VERSION 1.6 CHANGES (2026-10-21):
+- The Cancel and numpad 5 tests failed on Windows: a key sent to a test
+  window there only arrives if the window is brought to the front first.
+  They now check where Tk will send the keys (focus -lastfor, which works
+  with the window in the back too) and then press keys the way the other
+  GUI tests do. Numpad 5 is pressed under this system's own name for it
+  (Clear on Windows, KP_Begin on Linux).
 
 VERSION 1.5 CHANGES (2026-10-21):
 - New, from the 2026-10-21 review: the shortcuts work after cancelling
@@ -446,12 +454,19 @@ def test_bug_a_kindless_joker_takes_and_returns_the_card_from_the_pile():
 
 # ============================================== Found in the 2026-10-21 review == #
 
-def _focused_key(window, root, sequence):
-    """Press a key on whatever has the focus now (the way a real key press
-    arrives), without first moving the focus back to the window."""
+def _keys_go_to(window):
+    """The widget that gets the window's key presses. Tk remembers it per
+    window even when the window isn't in front (focus -lastfor), so this
+    works the same on Windows, where a test window often isn't."""
+    return window.nametowidget(window.tk.call("focus", "-lastfor", window))
+
+
+def _press(window, root, sequence):
+    """Press a key the way the other GUI tests do (bring the window to the
+    front first: on Windows a generated key is dropped otherwise)."""
+    window.focus_force()
     pump(root)
-    target = window.focus_get() or window
-    target.event_generate(sequence, when="now")
+    window.event_generate(sequence, when="now")
     pump(root)
 
 
@@ -460,7 +475,7 @@ def test_bug_keys_work_after_cancelling_a_new_game(tk_root, no_dialogs, how):
     # Old: New Game put the focus in the Inclusive calls box, and Cancel left
     # it there (hidden). That box takes typing, so every shortcut was ignored.
     import tkinter as tk
-    from btb.gui_game import AssistantGUI, GameSettings, PlayerGUI
+    from btb.gui_game import AssistantGUI, GameSettings, PlayerGUI, _typing_in
     window = tk.Toplevel(tk_root)
     gui = (PlayerGUI if how == "player" else AssistantGUI)(window)
     gui.game = game(["5", "6", "7"], ["K", "A", "Q"])
@@ -468,17 +483,21 @@ def test_bug_keys_work_after_cancelling_a_new_game(tk_root, no_dialogs, how):
     window.focus_force()
     gui.new_game()                                   # the settings panel, focus in its box
     pump(tk_root)
+    assert _typing_in(_keys_go_to(window))           # the bug's starting point
     if how == "assistant picker":
         gui.new_game(GameSettings())                 # on to the nine-card picker
         pump(tk_root)
         gui.cancel_pick()
     else:
         gui.cancel_setup()
-    _focused_key(window, tk_root, "<Key-7>")         # top-left box
+    pump(tk_root)
+    # The keys go to the page again, not to the hidden box that takes typing.
+    assert not _typing_in(_keys_go_to(window)), _keys_go_to(window)
+    _press(window, tk_root, "<Key-7>")               # top-left box
     assert gui.selected == 0
     if how != "player":
         gui.drawn_var.set(gui.game.draw_pile[0].key())   # the Assistant needs the flip
-    _focused_key(window, tk_root, "<Key-w>")         # Higher: 5 -> K
+    _press(window, tk_root, "<Key-w>")               # Higher: 5 -> K
     assert gui.game.box[0].rank == 13
 
 
@@ -512,8 +531,9 @@ def test_bug_losing_message_counts_cards_in_words(tk_root, no_dialogs, left, wor
 
 def test_bug_numpad_5_with_numlock_off_is_bound_for_windows_too(tk_root, no_dialogs):
     # The middle numpad key with NumLock off is KP_Begin on X11 but Clear on
-    # Windows; only KP_Begin was bound, so it did nothing on Windows. (A test
-    # display can't send a Windows Clear key, so its binding is checked.)
+    # Windows; only KP_Begin was bound, so it did nothing on Windows. Each
+    # system can only send its own name for the key, so both bindings are
+    # checked and this system's key is pressed.
     import tkinter as tk
     from btb.gui_game import KEYPAD_NUMLOCK_OFF, PlayerGUI
     window = tk.Toplevel(tk_root)
@@ -522,9 +542,10 @@ def test_bug_numpad_5_with_numlock_off_is_bound_for_windows_too(tk_root, no_dial
     gui.refresh()
     assert KEYPAD_NUMLOCK_OFF["5"] == ("KP_Begin", "Clear")
     assert set(KEYPAD_NUMLOCK_OFF) == set(text.POSITION_KEYS)
-    assert "<Key-Clear>" in window.bind()
-    window.focus_force()
-    _focused_key(window, tk_root, "<KeyPress-KP_Begin>")
+    bound = window.bind()
+    assert "<Key-Clear>" in bound and "<Key-KP_Begin>" in bound
+    this_system = "Clear" if window.tk.call("tk", "windowingsystem") == "win32" else "KP_Begin"
+    _press(window, tk_root, f"<KeyPress-{this_system}>")
     assert gui.selected == text.POSITION_KEYS["5"]
 
 

@@ -4,9 +4,14 @@ DOCUMENTATION CONSISTENCY TESTS
 ==============================================
 File Location: Beat-the-Box-Card-Game/python/tests/test_docs.py
 Status: ACTIVE
-Version: 1.4
+Version: 1.5
 Last Updated: 2026-10-21
-Last Tested: 2026-10-21 (pytest: 342 passed)
+Last Tested: 2026-10-21 (pytest: 345 passed)
+
+VERSION 1.5 CHANGES (2026-10-21):
+- New: no em or en dash in any Markdown, code or config file in the repo.
+- New: the threshold is described as "adds more than" (as the strategy
+  works) in the in-app text, the Optimizer page, GUIDE.md and STRATEGY.md.
 
 VERSION 1.4 CHANGES (2026-10-21):
 - The shortcut check is real now: every key must sit in a shortcuts
@@ -258,3 +263,33 @@ def test_card_counting_rules_for_7s_8s_and_9s_match_the_engine():
         assert (eight.lower > eight.higher) == (basic > 0)
         assert (seven.lower > seven.higher) == (basic > left[7] + left[8])
         assert (nine.higher > nine.lower) == (basic < -(left[8] + left[9]))
+
+
+# Text kinds checked for dashes: docs, code, config and the shared vectors.
+DASH_CHECKED = {".md", ".py", ".ts", ".json", ".txt", ".ini", ".gitignore", ".gitattributes"}
+SKIPPED_FOLDERS = {".git", "node_modules", "__pycache__", ".pytest_cache"}
+
+
+def test_no_em_or_en_dashes_anywhere():
+    # House style: no em dashes (U+2014), and ranges are written "1 to 3", not
+    # with an en dash (U+2013).
+    found = []
+    for path in ROOT.rglob("*"):
+        if (not path.is_file() or SKIPPED_FOLDERS & set(path.parts)
+                or (path.suffix or path.name) not in DASH_CHECKED):
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if "\u2014" in line or "\u2013" in line:
+                found.append(f"{path.relative_to(ROOT)}:{number}")
+    assert not found, f"em or en dash at {found}"
+
+
+def test_the_threshold_is_described_as_more_than():
+    # btb/strategy.py spends an inclusive call only when it adds MORE than the
+    # threshold (a gain equal to it keeps the plain call).
+    gui_sim = (ROOT / "python" / "btb" / "gui_sim.py").read_text(encoding="utf-8")
+    for name, source in (("text.py", text.STRATEGY_GUIDE + text.tool_guide()),
+                         ("gui_sim.py", gui_sim), ("docs/GUIDE.md", GUIDE),
+                         ("docs/STRATEGY.md", STRATEGY)):
+        assert "adds at least" not in source, name
+        assert "adds more than" in source, name
