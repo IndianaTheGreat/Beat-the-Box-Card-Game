@@ -3,9 +3,14 @@
     "title": "TYPESCRIPT TYPE-CHECK SETTINGS",
     "file_location": "Beat-the-Box-Card-Game/extension/tsconfig.json",
     "status": "ACTIVE",
-    "version": "1.1",
+    "version": "1.2",
     "last_updated": "2026-10-21",
-    "last_tested": "2026-10-21 (tsc 7.0.2 --noEmit: no errors)",
+    "last_tested": "2026-10-21 (tsc 7.0.2 and 5.9.3 --noEmit: no errors)",
+    "version_1_2_changes": [
+      "Checks tests/ as well as src/. tests/node.d.ts describes the Node built-ins",
+      "the tests import, which removes VS Code's red lines under node:test,",
+      "node:assert/strict and node:fs without installing @types/node."
+    ],
     "version_1_1_changes": [
       "Added this _header block. TypeScript ignores keys it doesn't know."
     ],
@@ -13,13 +18,13 @@
       "New. Strict type checking for src/, with no build output."
     ],
     "description": [
-      "Used only by the optional type check (npm run check). Node runs the .ts files",
-      "without it. Only erasable TypeScript is allowed (no enum, namespace or",
+      "Used by VS Code and by the optional type check (npm run check). Node runs the",
+      ".ts files without it. Only erasable TypeScript is allowed (no enum, namespace or",
       "parameter properties), so Node and a later build step only strip the types."
     ],
     "notes": [
-      "Only src/ is checked. The tests use Node's test runner, whose types would",
-      "need an npm package.",
+      "src/ and tests/ are checked. Node's own modules are described by",
+      "tests/node.d.ts, not by an npm package.",
       "When the Chrome pages arrive they will need Chrome API types added to \"types\"."
     ]
   },
@@ -39,5 +44,5 @@
     "types": [],
     "skipLibCheck": true
   },
-  "include": ["src"]
+  "include": ["src", "tests"]
 }
